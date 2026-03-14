@@ -21,11 +21,18 @@ export default function PasswordGate({
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    // Check if already authenticated this session
+    // Check if already authenticated this session and not expired
     try {
       const stored = sessionStorage.getItem(storageKey);
-      if (stored === "true") {
-        setAuthenticated(true);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (
+          parsed && parsed.auth === true &&
+          typeof parsed.ts === "number" &&
+          Date.now() - parsed.ts < 3600 * 1000 // 1 hour
+        ) {
+          setAuthenticated(true);
+        }
       }
     } catch {
       // sessionStorage unavailable (e.g. private browsing)
@@ -36,7 +43,12 @@ export default function PasswordGate({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (input === password) {
-      try { sessionStorage.setItem(storageKey, "true"); } catch {}
+      try {
+        sessionStorage.setItem(
+          storageKey,
+          JSON.stringify({ auth: true, ts: Date.now() })
+        );
+      } catch {}
       setAuthenticated(true);
       setError(false);
     } else {
