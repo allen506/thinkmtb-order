@@ -177,6 +177,8 @@ function seedData(db: Database.Database) {
     ["xl", "XL", 5],
     ["xxl", "XXL", 6],
     ["xxxl", "XXXL", 7],
+    ["4xl", "4XL", 8],
+    ["5xl", "5XL", 9],
   ];
   for (const s of sizes) {
     insertSize.run(...s);
