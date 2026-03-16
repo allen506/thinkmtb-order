@@ -66,7 +66,79 @@ export default function MyOrdersPage() {
     fetchOrders();
   }, [fetchOrders]);
 
-  // ...existing code for edit, delete, and UI logic...
+  const fetchCatalog = useCallback(async () => {
+    if (productTypes.length > 0) return;
+    try {
+      const res = await fetch("/api/catalog");
+      const data = await res.json();
+      setProductTypes(data.productTypes || []);
+      setDesigns(data.designs || []);
+      setSizes(data.sizes || []);
+    } catch {
+      // catalog fetch failure is non-fatal
+    }
+  }, [productTypes.length]);
+
+  const startEdit = useCallback(async (item: OrderItem) => {
+    await fetchCatalog();
+    setEditingItemId(item.id);
+    setEditState({
+      productTypeId: item.product_type_id,
+      designId: item.design_id,
+      sizeId: item.size_id,
+      quantity: item.quantity,
+    });
+  }, [fetchCatalog]);
+
+  const cancelEdit = useCallback(() => {
+    setEditingItemId(null);
+    setEditState(null);
+  }, []);
+
+  const saveEdit = useCallback(async (itemId: number) => {
+    if (!editState) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/orders/items/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productTypeId: editState.productTypeId,
+          designId: editState.designId,
+          sizeId: editState.sizeId,
+          quantity: editState.quantity,
+        }),
+      });
+      if (res.ok) {
+        setEditingItemId(null);
+        setEditState(null);
+        await fetchOrders();
+      }
+    } finally {
+      setSaving(false);
+    }
+  }, [editState, fetchOrders]);
+
+  const deleteItem = useCallback(async (itemId: number) => {
+    setDeleting(itemId);
+    try {
+      await fetch(`/api/orders/items/${itemId}`, { method: "DELETE" });
+      await fetchOrders();
+    } finally {
+      setDeleting(null);
+    }
+  }, [fetchOrders]);
+
+  const deleteOrder = useCallback(async (orderId: string) => {
+    setDeleting(orderId);
+    try {
+      await fetch(`/api/orders/${orderId}`, { method: "DELETE" });
+      setExpandedId(null);
+      await fetchOrders();
+    } finally {
+      setDeleting(null);
+    }
+  }, [fetchOrders]);
 
   return (
     <PasswordGate password="thinkmtb-go" storageKey="auth-main" title="My Orders">
@@ -139,38 +211,90 @@ export default function MyOrdersPage() {
                       <div className="border-t border-gray-200">
                         <div className="divide-y divide-gray-100">
                           {order.items.map((item) => {
-                            // ...existing code for item editing and deletion...
+                            const isEditing = editingItemId === item.id;
                             return (
-                              <div key={item.id} className="px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center justify-between group gap-2">
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 flex-1 text-sm text-black">
-                                  <span>{item.product_name}</span>
-                                  <span>{item.design_name}</span>
-                                  <span>{item.size_name}</span>
-                                  <span className="font-medium">Qty: {item.quantity}</span>
-                                </div>
-                                <div className="flex items-center space-x-2 sm:ml-4 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      /* startEdit(item) */
-                                    }}
-                                    className="text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-1 rounded transition-colors"
-                                    title="Edit this item"
-                                  >
-                                    ✎ Edit
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      /* deleteItem(item.id) */
-                                    }}
-                                    disabled={deleting === item.id}
-                                    className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition-colors disabled:opacity-50"
-                                    title="Remove this item"
-                                  >
-                                    {deleting === item.id ? "..." : "✕ Remove"}
-                                  </button>
-                                </div>
+                              <div key={item.id} className="px-4 sm:px-6 py-3 group">
+                                {isEditing && editState ? (
+                                  <div className="flex flex-col gap-2">
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
+                                      <select
+                                        value={editState.productTypeId}
+                                        onChange={(e) => setEditState({ ...editState, productTypeId: e.target.value })}
+                                        className="border border-gray-300 rounded px-2 py-1 text-black"
+                                      >
+                                        {productTypes.map((pt) => (
+                                          <option key={pt.id} value={pt.id}>{pt.name}</option>
+                                        ))}
+                                      </select>
+                                      <select
+                                        value={editState.designId}
+                                        onChange={(e) => setEditState({ ...editState, designId: e.target.value })}
+                                        className="border border-gray-300 rounded px-2 py-1 text-black"
+                                      >
+                                        {designs.map((d) => (
+                                          <option key={d.id} value={d.id}>{d.name}</option>
+                                        ))}
+                                      </select>
+                                      <select
+                                        value={editState.sizeId}
+                                        onChange={(e) => setEditState({ ...editState, sizeId: e.target.value })}
+                                        className="border border-gray-300 rounded px-2 py-1 text-black"
+                                      >
+                                        {sizes.map((s) => (
+                                          <option key={s.id} value={s.id}>{s.name}</option>
+                                        ))}
+                                      </select>
+                                      <input
+                                        type="number"
+                                        min={1}
+                                        value={editState.quantity}
+                                        onChange={(e) => setEditState({ ...editState, quantity: parseInt(e.target.value) || 1 })}
+                                        className="border border-gray-300 rounded px-2 py-1 text-black w-20"
+                                      />
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        onClick={() => saveEdit(item.id)}
+                                        disabled={saving}
+                                        className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded transition-colors disabled:opacity-50"
+                                      >
+                                        {saving ? "Saving..." : "✓ Save"}
+                                      </button>
+                                      <button
+                                        onClick={cancelEdit}
+                                        className="text-xs text-gray-600 hover:bg-gray-100 px-3 py-1 rounded transition-colors"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 flex-1 text-sm text-black">
+                                      <span>{item.product_name}</span>
+                                      <span>{item.design_name}</span>
+                                      <span>{item.size_name}</span>
+                                      <span className="font-medium">Qty: {item.quantity}</span>
+                                    </div>
+                                    <div className="flex items-center space-x-2 sm:ml-4 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); startEdit(item); }}
+                                        className="text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-1 rounded transition-colors"
+                                        title="Edit this item"
+                                      >
+                                        ✎ Edit
+                                      </button>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); deleteItem(item.id); }}
+                                        disabled={deleting === item.id}
+                                        className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                                        title="Remove this item"
+                                      >
+                                        {deleting === item.id ? "..." : "✕ Remove"}
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
@@ -178,7 +302,7 @@ export default function MyOrdersPage() {
                         {/* Delete entire order */}
                         <div className="px-4 sm:px-6 py-3 bg-gray-50 flex justify-end">
                           <button
-                            onClick={() => {/* deleteOrder(order.id) */}}
+                            onClick={() => deleteOrder(order.id)}
                             disabled={deleting === order.id}
                             className="text-sm text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 font-medium"
                           >
