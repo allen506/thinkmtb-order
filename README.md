@@ -1,36 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# thinkmtb-order
 
-## Getting Started
+Team MTB jersey/gear ordering system built with Next.js, SQLite (better-sqlite3), and Tailwind CSS.
 
-First, run the development server:
+---
+
+## Production Server
+
+The app runs on port **3001** (internal), with Nginx proxying from port **3000** to the app.
+
+### Start / Manage with PM2
+
+PM2 keeps the app running and automatically restarts it if it crashes.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Start the app (first time, or after a fresh clone)
+npm run build
+pm2 start ecosystem.config.js
+
+# Save the process list so PM2 restores it on reboot
+pm2 save
+
+# Common commands
+pm2 list                    # Show all processes and their status
+pm2 logs thinkmtb-order     # Tail live logs
+pm2 restart thinkmtb-order  # Restart the app
+pm2 stop thinkmtb-order     # Stop the app
+pm2 delete thinkmtb-order   # Remove from PM2
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Deploy an update
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+git pull
+npm run build
+pm2 restart thinkmtb-order
+pm2 save
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Auto-start on reboot (macOS launchd)
 
-## Learn More
+PM2 is registered as a launchd service named `com.PM2`.  
+The saved process list at `~/.pm2/dump.pm2` is restored automatically on login.
 
-To learn more about Next.js, take a look at the following resources:
+To regenerate the startup hook after a Node.js upgrade:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+pm2 unstartup launchd
+pm2 startup
+# Run the sudo command it prints, then:
+pm2 save
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Nginx config
 
-## Deploy on Vercel
+The Nginx config is at `nginx-thinkmtb.conf`.  
+Nginx listens on port 3000 (or 443 for HTTPS) and proxies to `http://localhost:3001`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Development
+
+```bash
+npm install
+npm run dev      # runs on http://localhost:3000
+```
+
+---
+
+## Tech Stack
+
+- [Next.js 16](https://nextjs.org) (App Router)
+- [better-sqlite3](https://github.com/WiseLibs/better-sqlite3)
+- [Tailwind CSS v4](https://tailwindcss.com)
+- [PM2](https://pm2.keymetrics.io) — process manager / auto-recovery
