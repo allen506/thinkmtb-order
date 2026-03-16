@@ -452,9 +452,7 @@ export default function AdminPage() {
                       }`}
                     >
                       <option value="pending">Pending</option>
-                      <option value="confirmed">Confirmed</option>
                       <option value="paid">Paid</option>
-                      <option value="ordered">Ordered from CMS</option>
                       <option value="delivered">Delivered</option>
                       <option value="cancelled">Cancelled</option>
                     </select>
