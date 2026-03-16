@@ -42,6 +42,7 @@ interface EditState {
 export default function MyOrdersPage() {
   const [orders, setOrders] = useState<OrderResult[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | number | null>(null);
   const [editingItemId, setEditingItemId] = useState<number | null>(null);
@@ -51,7 +52,8 @@ export default function MyOrdersPage() {
   const [designs, setDesigns] = useState<CatalogOption[]>([]);
   const [sizes, setSizes] = useState<CatalogOption[]>([]);
 
-  const fetchOrders = useCallback(async () => {
+  const fetchOrders = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
     try {
       const res = await fetch("/api/orders");
       const data = await res.json();
@@ -60,6 +62,7 @@ export default function MyOrdersPage() {
       setOrders([]);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
@@ -152,10 +155,11 @@ export default function MyOrdersPage() {
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-2xl sm:text-3xl font-bold text-black">My Orders</h1>
             <button
-              onClick={fetchOrders}
-              className="text-sm bg-gray-100 hover:bg-gray-200 text-black px-4 py-2 rounded-lg transition-colors"
+              onClick={() => fetchOrders(true)}
+              disabled={refreshing}
+              className="text-sm bg-gray-100 hover:bg-gray-200 text-black px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
             >
-              ↻ Refresh
+              {refreshing ? "Refreshing..." : "↻ Refresh"}
             </button>
           </div>
           {orders.length === 0 ? (
