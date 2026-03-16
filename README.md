@@ -51,6 +51,19 @@ pm2 startup
 pm2 save
 ```
 
+### Local health check (cron)
+
+A cron job runs `scripts/healthcheck.sh` every **5 minutes**. It curls `http://localhost:3000`; if the response is not HTTP 200, it triggers a `pm2 restart` and logs the event.
+
+Logs are written to `logs/healthcheck.log` (excluded from git).
+
+To view or edit the cron schedule:
+```bash
+crontab -l          # show current jobs
+crontab -e          # edit (change */5 to adjust frequency)
+tail -f /Users/allen/Programming/thinkmtb-order/logs/healthcheck.log  # live log
+```
+
 ### Nginx config
 
 The Nginx config is at `nginx-thinkmtb.conf`.  

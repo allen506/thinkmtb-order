@@ -42,3 +42,6 @@ yarn-error.log*
 # database
 /data/
 next-env.d.ts
+
+# health check logs
+/logs/
