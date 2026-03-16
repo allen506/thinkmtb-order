@@ -21,6 +21,7 @@ interface OrderItem {
 }
 interface OrderResult {
   id: string;
+  order_number: string;
   user_name: string;
   status: string;
   notes: string;
@@ -185,8 +186,9 @@ export default function MyOrdersPage() {
                         <span className="text-lg">{isExpanded ? "▼" : "▶"}</span>
                         <div>
                           <p className="font-semibold text-black">
-                            {order.user_name}
-                          </p>
+                            {order.user_name}                            {order.order_number && (
+                              <span className="ml-2 text-xs font-mono text-gray-500">{order.order_number}</span>
+                            )}                          </p>
                           <p className="text-sm text-black">
                             {new Date(order.created_at).toLocaleDateString("en-US", {
                               year: "numeric",

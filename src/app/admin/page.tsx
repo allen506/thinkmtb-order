@@ -40,6 +40,7 @@ interface BreakdownItem {
 
 interface OrderDetail {
   id: string;
+  order_number: string;
   user_name: string;
   status: string;
   notes: string;
@@ -115,6 +116,7 @@ export default function AdminPage() {
     // Sheet 1: All Orders (one row per item)
     const orderRows = data.orders.flatMap((order) =>
       order.items.map((item) => ({
+        "Order #": order.order_number || '',
         Name: order.user_name,
         Status: order.status,
         "Order Date": new Date(order.created_at).toLocaleDateString(),
@@ -419,6 +421,9 @@ export default function AdminPage() {
                   <div>
                     <h4 className="font-semibold text-black">
                       {order.user_name}
+                      {order.order_number && (
+                        <span className="ml-2 text-xs font-mono text-gray-500">{order.order_number}</span>
+                      )}
                     </h4>
                     <p className="text-xs text-black">
                       {new Date(order.created_at).toLocaleDateString("en-US", {
@@ -499,7 +504,7 @@ export default function AdminPage() {
                     Total qty: <strong>{order.total_qty}</strong>
                   </span>
                   <span className="font-mono text-black">
-                    {order.id.slice(0, 8)}...
+                    {order.order_number || order.id.slice(0, 8) + '...'}
                   </span>
                 </div>
               </div>

@@ -90,7 +90,34 @@ function initializeDb(db: Database.Database) {
       crc_to_usd REAL NOT NULL,
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS order_number_seq (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      next_val INTEGER NOT NULL DEFAULT 100
+    );
   `);
+
+  // Ensure the sequence row exists
+  db.prepare(`INSERT OR IGNORE INTO order_number_seq (id, next_val) VALUES (1, 100)`).run();
+
+  // Add order_number column if it was not part of the original schema
+  const cols = (db.prepare(`PRAGMA table_info(orders)`).all() as { name: string }[]).map(c => c.name);
+  if (!cols.includes('order_number')) {
+    db.prepare(`ALTER TABLE orders ADD COLUMN order_number TEXT`).run();
+    // Backfill existing orders in created_at order
+    const existing = db.prepare(`SELECT id FROM orders WHERE order_number IS NULL ORDER BY created_at ASC`).all() as { id: string }[];
+    const seq = db.prepare(`SELECT next_val FROM order_number_seq WHERE id = 1`).get() as { next_val: number };
+    let n = seq.next_val;
+    const update = db.prepare(`UPDATE orders SET order_number = ? WHERE id = ?`);
+    const bumpSeq = db.prepare(`UPDATE order_number_seq SET next_val = ? WHERE id = 1`);
+    db.transaction(() => {
+      for (const row of existing) {
+        update.run(`thnk-${n}`, row.id);
+        n++;
+      }
+      bumpSeq.run(n);
+    })();
+  }
 
   // Seed initial data if tables are empty
   const designCount = db.prepare("SELECT COUNT(*) as count FROM designs").get() as { count: number };

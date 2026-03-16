@@ -75,8 +75,8 @@ export async function POST(request: NextRequest) {
     const orderId = uuidv4();
 
     const insertOrder = db.prepare(
-      `INSERT INTO orders (id, user_name, notes) 
-       VALUES (?, ?, ?)`
+      `INSERT INTO orders (id, user_name, notes, order_number) 
+       VALUES (?, ?, ?, ?)`
     );
 
     const insertItem = db.prepare(
@@ -84,12 +84,13 @@ export async function POST(request: NextRequest) {
        VALUES (?, ?, ?, ?, ?)`
     );
 
+    let orderNumber = "";
     const transaction = db.transaction(() => {
-      insertOrder.run(
-        orderId,
-        body.userName,
-        body.notes || null
-      );
+      const seq = db.prepare(`SELECT next_val FROM order_number_seq WHERE id = 1`).get() as { next_val: number };
+      orderNumber = `thnk-${seq.next_val}`;
+      db.prepare(`UPDATE order_number_seq SET next_val = ? WHERE id = 1`).run(seq.next_val + 1);
+
+      insertOrder.run(orderId, body.userName, body.notes || null, orderNumber);
 
       for (const item of body.items) {
         insertItem.run(
@@ -104,7 +105,7 @@ export async function POST(request: NextRequest) {
 
     transaction();
 
-    return NextResponse.json({ orderId, message: "Order placed successfully" }, { status: 201 });
+    return NextResponse.json({ orderId, orderNumber, message: "Order placed successfully" }, { status: 201 });
   } catch (error) {
     console.error("Error creating order:", error);
     return NextResponse.json(
