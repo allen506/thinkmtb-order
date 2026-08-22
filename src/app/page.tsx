@@ -4,8 +4,8 @@ import Link from "next/link";
 
 export default function Home() {
   return (
-    <div className="min-h-[calc(100vh-56px)] flex flex-col items-center justify-center px-6 py-20" style={{ background: "#f5f5f7" }}>
-      <div className="text-center mb-14">
+    <div className="min-h-[calc(100vh-56px)] flex flex-col items-center justify-start px-6 pt-12 pb-20" style={{ background: "#f5f5f7" }}>
+      <div className="text-center mb-10">
         <p className="text-xs font-semibold tracking-widest text-gray-400 uppercase mb-3">Team Apparel</p>
         <h1 className="text-5xl sm:text-6xl font-bold text-gray-900 tracking-tight mb-3">ThinkMTB</h1>
         <p className="text-lg text-gray-400 font-light">Team Order System</p>
