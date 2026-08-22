@@ -27,19 +27,6 @@ export default function PasswordGate({
   const [verifying, setVerifying] = useState(false);
   const [orderingActive, setOrderingActive] = useState(true);
 
-  // Human verification (only for admin verifyEndpoint)
-  const [captchaA, setCaptchaA] = useState(0);
-  const [captchaB, setCaptchaB] = useState(0);
-  const [captchaInput, setCaptchaInput] = useState("");
-  const [formShownAt, setFormShownAt] = useState(0);
-
-  const newCaptcha = () => {
-    setCaptchaA(Math.floor(Math.random() * 9) + 1);
-    setCaptchaB(Math.floor(Math.random() * 9) + 1);
-    setCaptchaInput("");
-    setFormShownAt(Date.now());
-  };
-
   const validPasswords = Array.isArray(password) ? password : [password];
 
   useEffect(() => {
@@ -71,40 +58,12 @@ export default function PasswordGate({
       // sessionStorage unavailable (e.g. private browsing)
     }
     setChecking(false);
-    if (verifyEndpoint) newCaptcha();
   }, [storageKey]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setVerifying(true);
     setErrorMsg("");
-
-    // Human verification checks (admin-only)
-    if (verifyEndpoint) {
-      // Honeypot: hidden field must be empty
-      const honeypot = (e.target as HTMLFormElement).elements.namedItem("website") as HTMLInputElement | null;
-      if (honeypot?.value) {
-        // Silently appear to work — don't reveal honeypot to bot
-        setVerifying(false);
-        return;
-      }
-      // Timing: must take at least 2 seconds
-      if (Date.now() - formShownAt < 2000) {
-        setError(true);
-        setErrorMsg("Please slow down.");
-        setVerifying(false);
-        newCaptcha();
-        return;
-      }
-      // Math CAPTCHA
-      if (parseInt(captchaInput) !== captchaA + captchaB) {
-        setError(true);
-        setErrorMsg("Incorrect answer — try again.");
-        setVerifying(false);
-        newCaptcha();
-        return;
-      }
-    }
 
     let isValid = false;
     if (verifyEndpoint) {
@@ -116,8 +75,12 @@ export default function PasswordGate({
         });
         const data = await res.json();
         isValid = data.valid === true;
+        if (!isValid && data.error) {
+          setErrorMsg(data.error);
+        }
       } catch {
         isValid = false;
+        setErrorMsg("Connection error. Please try again.");
       }
     } else {
       isValid = validPasswords.includes(input);
@@ -138,7 +101,9 @@ export default function PasswordGate({
       window.dispatchEvent(new Event("auth-changed"));
     } else {
       setError(true);
-      setErrorMsg("Incorrect password. Try again.");
+      if (!errorMsg) {
+        setErrorMsg("Incorrect password. Try again.");
+      }
       setInput("");
     }
   };
@@ -206,9 +171,6 @@ export default function PasswordGate({
           <p className="text-sm text-gray-400 mt-1">Enter the password to continue</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-3">
-          {/* Honeypot — hidden from humans, bots fill it in */}
-          <input type="text" name="website" autoComplete="off" tabIndex={-1}
-            aria-hidden="true" style={{ display: "none" }} />
           <input
             type="password"
             value={input}
@@ -220,28 +182,10 @@ export default function PasswordGate({
               error ? "border-red-300 bg-red-50" : "border-gray-200 bg-gray-50"
             } text-gray-900 text-center text-base leading-tight focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all`}
           />
-          {verifyEndpoint && captchaA > 0 && (
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1 text-center">
-                What is {captchaA} + {captchaB}?
-              </label>
-              <input
-                type="number"
-                value={captchaInput}
-                onChange={(e) => { setCaptchaInput(e.target.value); setError(false); }}
-                placeholder="Answer"
-                required
-                autoComplete="off"
-                className={`w-full px-4 py-2.5 rounded-xl border ${
-                  error ? "border-red-300 bg-red-50" : "border-gray-200 bg-gray-50"
-                } text-gray-900 text-center text-base leading-tight focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none`}
-              />
-            </div>
-          )}
           {error && <p className="text-red-500 text-xs text-center">{errorMsg || "Incorrect password. Try again."}</p>}
           <button
             type="submit"
-            disabled={verifying || (!!verifyEndpoint && captchaInput === "")}
+            disabled={verifying}
             className="w-full bg-gray-900 text-white py-3 rounded-xl hover:bg-gray-700 transition-colors font-medium disabled:opacity-50"
           >
             {verifying ? "Checking…" : "Continue"}
