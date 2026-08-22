@@ -37,14 +37,14 @@ export default function MobileNav({ role }: MobileNavProps) {
                 <Link
                   href="/user"
                   onClick={() => setOpen(false)}
-                  className="block px-3 py-3 rounded-md text-base font-medium hover:bg-gray-700 transition-colors"
+                  className="block px-3 py-3 rounded-md text-base font-medium text-white hover:bg-gray-700 transition-colors"
                 >
                   Dashboard
                 </Link>
                 <Link
                   href="/designs"
                   onClick={() => setOpen(false)}
-                  className="block px-3 py-3 rounded-md text-base font-medium hover:bg-gray-700 transition-colors"
+                  className="block px-3 py-3 rounded-md text-base font-medium text-white hover:bg-gray-700 transition-colors"
                 >
                   Designs
                 </Link>
@@ -56,28 +56,28 @@ export default function MobileNav({ role }: MobileNavProps) {
                 <Link
                   href="/designs"
                   onClick={() => setOpen(false)}
-                  className="block px-3 py-3 rounded-md text-base font-medium hover:bg-gray-700 transition-colors"
+                  className="block px-3 py-3 rounded-md text-base font-medium text-white hover:bg-gray-700 transition-colors"
                 >
                   Designs
                 </Link>
                 <Link
                   href="/products"
                   onClick={() => setOpen(false)}
-                  className="block px-3 py-3 rounded-md text-base font-medium hover:bg-gray-700 transition-colors"
+                  className="block px-3 py-3 rounded-md text-base font-medium text-white hover:bg-gray-700 transition-colors"
                 >
                   Products
                 </Link>
                 <Link
                   href="/admin"
                   onClick={() => setOpen(false)}
-                  className="block px-3 py-3 rounded-md text-base font-medium bg-amber-600 hover:bg-amber-700 transition-colors text-center"
+                  className="block px-3 py-3 rounded-md text-base font-medium bg-amber-600 hover:bg-amber-700 transition-colors text-center text-white"
                 >
                   Team Totals
                 </Link>
                 <Link
                   href="/admin/settings"
                   onClick={() => setOpen(false)}
-                  className="block px-3 py-3 rounded-md text-base font-medium hover:bg-gray-700 transition-colors"
+                  className="block px-3 py-3 rounded-md text-base font-medium text-white hover:bg-gray-700 transition-colors"
                 >
                   Settings
                 </Link>
@@ -88,7 +88,7 @@ export default function MobileNav({ role }: MobileNavProps) {
               <Link
                 href="/"
                 onClick={() => setOpen(false)}
-                className="block px-3 py-3 rounded-md text-base font-medium hover:bg-gray-700 transition-colors"
+                className="block px-3 py-3 rounded-md text-base font-medium text-white hover:bg-gray-700 transition-colors"
               >
                 Login
               </Link>
