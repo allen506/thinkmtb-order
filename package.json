@@ -11,6 +11,7 @@
   "dependencies": {
     "better-sqlite3": "^12.6.2",
     "next": "16.1.6",
+    "nodemailer": "^6.9.13",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "uuid": "^13.0.0",
@@ -20,6 +21,7 @@
     "@tailwindcss/postcss": "^4",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
+    "@types/nodemailer": "^6.4.14",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/uuid": "^10.0.0",

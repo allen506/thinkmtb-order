@@ -1,11 +1,83 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { PRICING } from "@/lib/pricing";
-import PricingTable from "@/components/PricingTable";
 import PasswordGate from "@/components/PasswordGate";
+import ProductManager from "@/components/ProductManager";
+import DesignManager from "@/components/DesignManager";
+import PricingTierManager from "@/components/PricingTierManager";
+import PricingTiersViewer from "@/components/PricingTiersViewer";
+import ProductDesignAssociations from "@/components/ProductDesignAssociations";
+import SubmittedPayments from "@/components/SubmittedPayments";
 import * as XLSX from "xlsx";
 
+function ChangePasswordButton() {
+  const [open, setOpen] = useState(false);
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [isError, setIsError] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (next !== confirm) { setIsError(true); setMsg("New passwords don't match"); return; }
+    setSaving(true); setMsg("");
+    const res = await fetch("/api/admin/change-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currentPassword: current, newPassword: next }),
+    });
+    const data = await res.json();
+    setSaving(false);
+    if (res.ok) { setIsError(false); setMsg("Password updated!"); setCurrent(""); setNext(""); setConfirm(""); }
+    else { setIsError(true); setMsg(data.error || "Failed"); }
+  };
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="text-sm bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-lg transition-colors">
+        🔑 Change Password
+      </button>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6 sm:p-8 max-w-sm w-full">
+        <h2 className="text-lg font-semibold text-gray-900 mb-5">Change Admin Password</h2>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Current Password</label>
+            <input type="password" required value={current} onChange={e => setCurrent(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">New Password</label>
+            <input type="password" required minLength={6} value={next} onChange={e => setNext(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Confirm New Password</label>
+            <input type="password" required value={confirm} onChange={e => setConfirm(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm" />
+          </div>
+          {msg && <p className={`text-xs ${isError ? "text-red-500" : "text-green-600"}`}>{msg}</p>}
+          <div className="flex gap-2 pt-1">
+            <button type="submit" disabled={saving} className="flex-1 py-2.5 bg-gray-900 text-white rounded-xl font-medium hover:bg-gray-700 transition-colors disabled:opacity-40">
+              {saving ? "Saving…" : "Update Password"}
+            </button>
+            <button type="button" onClick={() => { setOpen(false); setMsg(""); }} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors">
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Payments Admin ───────────────────────────────────────────────────────────
 interface ProductSummary {
   product_type_id: string;
   product_name: string;
@@ -55,8 +127,23 @@ interface OrderDetail {
     design_name: string;
     size_id: string;
     size_name: string;
+    sleeve_length?: string | null;
     quantity: number;
   }[];
+}
+
+interface UserTotal {
+  userName: string;
+  items: {
+    productName: string;
+    designName: string;
+    sizeName: string;
+    fit: string;
+    quantity: number;
+    unitPriceUSD: number;
+    totalUSD: number;
+  }[];
+  grandTotalUSD: number;
 }
 
 interface AdminData {
@@ -69,20 +156,66 @@ interface AdminData {
     fullBreakdown: BreakdownItem[];
   };
   orders: OrderDetail[];
+  exchangeRate: number;
 }
 
 export default function AdminPage() {
   const [data, setData] = useState<AdminData | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<
-    "overview" | "orders" | "breakdown" | "pricing"
+    "overview" | "orders" | "breakdown" | "pricing" | "per-person" | "payments"
   >("overview");
+  const [userTotals, setUserTotals] = useState<UserTotal[]>([]);
+  const [userTotalsLoading, setUserTotalsLoading] = useState(false);
+  const [markingPaid, setMarkingPaid] = useState<string | null>(null);
+  const [orderingActive, setOrderingActive] = useState(true);
+  const [togglingStatus, setTogglingStatus] = useState(false);
+  const [startingNewCampaign, setStartingNewCampaign] = useState(false);
+
+  // Catalog for inline item editing
+  const [catalog, setCatalog] = useState<{ productTypes: any[]; designs: any[]; sizes: any[]; productDesigns: any[] }>({ productTypes: [], designs: [], sizes: [], productDesigns: [] });
+  // Admin order editing state
+  const [editingItem, setEditingItem] = useState<number | null>(null);
+  const [editFields, setEditFields] = useState<{ productTypeId: string; designId: string; sizeId: string; fit: string; quantity: number }>({ productTypeId: "", designId: "", sizeId: "", fit: "", quantity: 1 });
+  const [savingItem, setSavingItem] = useState(false);
+  const [deletingItem, setDeletingItem] = useState<number | null>(null);
+  const [addingToOrder, setAddingToOrder] = useState<string | null>(null);
+  const [addFields, setAddFields] = useState<{ productTypeId: string; designId: string; sizeId: string; fit: string; quantity: number }>({ productTypeId: "", designId: "", sizeId: "", fit: "", quantity: 1 });
+  const [addingItem, setAddingItem] = useState(false);
+
+  const fetchUserTotals = useCallback(async () => {
+    setUserTotalsLoading(true);
+    try {
+      const res = await fetch("/api/orders/user-totals");
+      const json = await res.json();
+      setUserTotals(json.userTotals || []);
+    } catch {
+      // non-fatal
+    } finally {
+      setUserTotalsLoading(false);
+    }
+  }, []);
+
+  const fetchOrderingStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/orders/status");
+      const json = await res.json();
+      setOrderingActive(json.orderingActive);
+    } catch {
+      console.error("Failed to fetch ordering status");
+    }
+  }, []);
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch("/api/admin/summary");
-      const json = await res.json();
+      const [summaryRes, catalogRes] = await Promise.all([
+        fetch("/api/admin/summary"),
+        fetch("/api/catalog"),
+      ]);
+      const json = await summaryRes.json();
+      const cat = await catalogRes.json();
       setData(json);
+      setCatalog({ productTypes: cat.productTypes || [], designs: cat.designs || [], sizes: cat.sizes || [], productDesigns: cat.productDesigns || [] });
     } catch (err) {
       console.error("Failed to fetch admin data", err);
     } finally {
@@ -90,9 +223,78 @@ export default function AdminPage() {
     }
   }, []);
 
+  const toggleOrderingStatus = useCallback(async () => {
+    if (orderingActive) {
+      if (!confirm("Close ordering?\n\nUsers will no longer be able to place or modify orders until you re-open it.")) return;
+    }
+    setTogglingStatus(true);
+    try {
+      const res = await fetch("/api/orders/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderingActive: !orderingActive }),
+      });
+      const json = await res.json();
+      setOrderingActive(json.orderingActive);
+    } catch (err) {
+      console.error("Failed to toggle ordering status:", err);
+    } finally {
+      setTogglingStatus(false);
+    }
+  }, [orderingActive]);
+
+  const handleStartNewCampaign = useCallback(async () => {
+    if (!confirm("⚠️ Start a NEW order campaign?\n\nThis will:\n- DELETE all current orders\n- Reset the order counter\n- Enable ordering for the new campaign\n\nThis cannot be undone!")) {
+      return;
+    }
+    
+    setStartingNewCampaign(true);
+    try {
+      const res = await fetch("/api/orders/new-campaign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const json = await res.json();
+      if (json.success) {
+        alert("✓ New campaign started!\nAll designs and products are ready.");
+        await Promise.all([fetchData(), fetchOrderingStatus()]);
+      } else {
+        alert("Failed to start new campaign: " + json.error);
+      }
+    } catch (err) {
+      console.error("Failed to start new campaign:", err);
+      alert("Error starting new campaign");
+    } finally {
+      setStartingNewCampaign(false);
+    }
+  }, [fetchData, fetchOrderingStatus]);
+
+  const handleMarkAllPaid = useCallback(async (userName: string, orderIds: string[]) => {
+    setMarkingPaid(userName);
+    try {
+      await Promise.all(
+        orderIds.map((id) =>
+          fetch(`/api/orders/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "paid" }),
+          })
+        )
+      );
+      await Promise.all([fetchData(), fetchUserTotals()]);
+    } finally {
+      setMarkingPaid(null);
+    }
+  }, [fetchData, fetchUserTotals]);
+
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+    fetchOrderingStatus();
+  }, [fetchData, fetchOrderingStatus]);
+
+  useEffect(() => {
+    if (activeTab === "per-person") fetchUserTotals();
+  }, [activeTab, fetchUserTotals]);
 
   const handleStatusChange = async (orderId: string, status: string) => {
     await fetch(`/api/orders/${orderId}`, {
@@ -109,11 +311,76 @@ export default function AdminPage() {
     fetchData();
   };
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     if (!data) return;
+
+    // Ensure per-person totals are loaded before exporting
+    let totals = userTotals;
+    if (totals.length === 0) {
+      try {
+        const res = await fetch("/api/orders/user-totals");
+        const json = await res.json();
+        totals = json.userTotals || [];
+        setUserTotals(totals);
+      } catch { totals = []; }
+    }
+
     const wb = XLSX.utils.book_new();
 
-    // Sheet 1: All Orders (one row per item)
+    // Sheet 1: Per Person (for collecting money)
+    const perPersonRows: any[] = [];
+    totals
+      .slice()
+      .sort((a, b) => a.userName.localeCompare(b.userName))
+      .forEach((user) => {
+        perPersonRows.push({
+          Name: user.userName,
+          Product: "",
+          Design: "",
+          Size: "",
+          Qty: "",
+          "Unit Price (USD)": "",
+          "Total (USD)": "",
+          Notes: `TOTAL FOR ${user.userName.toUpperCase()}`,
+        });
+        user.items.forEach((item) => {
+          perPersonRows.push({
+            Name: "",
+            Product: item.productName,
+            Design: item.designName,
+            Size: item.sizeName,
+            "Fit / Gender": item.fit || "",
+            Qty: item.quantity,
+            "Unit Price (USD)": item.unitPriceUSD.toFixed(2),
+            "Total (USD)": item.totalUSD.toFixed(2),
+            Notes: "",
+          });
+        });
+        perPersonRows.push({
+          Name: "",
+          Product: "",
+          Design: "",
+          Size: "",
+          Qty: "",
+          "Unit Price (USD)": "",
+          "Total (USD)": user.grandTotalUSD.toFixed(2),
+          Notes: `Amount Due: $${user.grandTotalUSD.toFixed(2)}`,
+        });
+        perPersonRows.push({
+          Name: "",
+          Product: "",
+          Design: "",
+          Size: "",
+          Qty: "",
+          "Unit Price (USD)": "",
+          "Total (USD)": "",
+          Notes: "",
+        });
+      });
+    const wsPerPerson = XLSX.utils.json_to_sheet(perPersonRows);
+    XLSX.utils.book_append_sheet(wb, wsPerPerson, "Per Person");
+
+    // Sheet 2: All Orders (one row per item)
     const orderRows = data.orders.flatMap((order) =>
       order.items.map((item) => ({
         "Order #": order.order_number || '',
@@ -123,13 +390,17 @@ export default function AdminPage() {
         Product: item.product_name,
         Design: item.design_name,
         Size: item.size_name,
+        "Fit / Gender": (item as any).fit || "",
+        Sleeve: item.sleeve_length
+          ? item.sleeve_length.charAt(0).toUpperCase() + item.sleeve_length.slice(1)
+          : "",
         Qty: item.quantity,
       }))
     );
     const wsOrders = XLSX.utils.json_to_sheet(orderRows);
     XLSX.utils.book_append_sheet(wb, wsOrders, "All Orders");
 
-    // Sheet 2: By Product
+    // Sheet 3: By Product
     const productRows = data.summary.byProduct.map((p) => ({
       Product: p.product_name,
       "Total Qty": p.total_qty,
@@ -141,11 +412,12 @@ export default function AdminPage() {
     const wsProducts = XLSX.utils.json_to_sheet(productRows);
     XLSX.utils.book_append_sheet(wb, wsProducts, "By Product");
 
-    // Sheet 3: Full Breakdown
+    // Sheet 4: Full Breakdown
     const breakdownRows = data.summary.fullBreakdown.map((item) => ({
       Product: item.product_name,
       Design: item.design_name,
       Size: item.size_name,
+      "Fit / Gender": (item as any).fit || "",
       "Total Qty": item.total_qty,
     }));
     const wsBreakdown = XLSX.utils.json_to_sheet(breakdownRows);
@@ -156,7 +428,7 @@ export default function AdminPage() {
 
   if (loading) {
     return (
-      <PasswordGate password="thinkmtb123" storageKey="auth-admin" title="TeamTotals Admin">
+      <PasswordGate password="" storageKey="auth-admin" verifyEndpoint="/api/admin/verify-password" title="TeamTotals Admin" checkOrderingStatus={false}>
         <div className="flex items-center justify-center py-20">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-500"></div>
         </div>
@@ -164,11 +436,11 @@ export default function AdminPage() {
     );
   }
 
-  if (!data) {
+  if (!data || !data.summary) {
     return (
-      <PasswordGate password="thinkmtb123" storageKey="auth-admin" title="TeamTotals Admin">
+      <PasswordGate password="" storageKey="auth-admin" verifyEndpoint="/api/admin/verify-password" title="TeamTotals Admin" checkOrderingStatus={false}>
         <div className="text-center py-20 text-black">
-          Failed to load admin data.
+          Failed to load admin data. Please try refreshing the page.
         </div>
       </PasswordGate>
     );
@@ -176,26 +448,69 @@ export default function AdminPage() {
 
   const { summary, orders } = data;
 
+  const adminSaveItem = async (itemId: number) => {
+    setSavingItem(true);
+    await fetch(`/api/orders/items/${itemId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ productTypeId: editFields.productTypeId, designId: editFields.designId, sizeId: editFields.sizeId, fit: editFields.fit, quantity: editFields.quantity }) });
+    setSavingItem(false);
+    setEditingItem(null);
+    fetchData();
+  };
+
+  const adminDeleteItem = async (itemId: number) => {
+    if (!confirm("Remove this item from the order?")) return;
+    setDeletingItem(itemId);
+    await fetch(`/api/orders/items/${itemId}`, { method: "DELETE" });
+    setDeletingItem(null);
+    fetchData();
+  };
+
+  const adminAddItem = async (orderId: string) => {
+    if (!addFields.productTypeId || !addFields.designId || !addFields.sizeId) return;
+    setAddingItem(true);
+    await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userName: orders.find(o => o.id === orderId)?.user_name || "", items: [{ productTypeId: addFields.productTypeId, designId: addFields.designId, sizeId: addFields.sizeId, fit: addFields.fit, quantity: addFields.quantity }] }) });
+    setAddingItem(false);
+    setAddingToOrder(null);
+    setAddFields({ productTypeId: "", designId: "", sizeId: "", fit: "", quantity: 1 });
+    fetchData();
+  };
+
   return (
-    <PasswordGate password="thinkmtb123" storageKey="auth-admin" title="TeamTotals Admin">
+    <PasswordGate password="" storageKey="auth-admin" verifyEndpoint="/api/admin/verify-password" title="TeamTotals Admin" checkOrderingStatus={false}>
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-          Admin Dashboard
-        </h1>
-        <div className="flex space-x-2">
+        <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Team Totals</h1>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={handleStartNewCampaign}
+            disabled={startingNewCampaign}
+            className="text-sm px-4 py-2 rounded-xl transition-colors font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 disabled:opacity-40"
+          >
+            {startingNewCampaign ? "Starting…" : "New Campaign"}
+          </button>
+          <button
+            onClick={toggleOrderingStatus}
+            disabled={togglingStatus}
+            className={`text-sm px-4 py-2 rounded-xl transition-colors font-medium ${
+              orderingActive
+                ? "bg-green-50 hover:bg-green-100 text-green-700 border border-green-200"
+                : "bg-red-50 hover:bg-red-100 text-red-600 border border-red-200"
+            } disabled:opacity-40`}
+          >
+            {togglingStatus ? "Updating…" : orderingActive ? "✓ Ordering Open" : "✗ Ordering Closed"}
+          </button>
           <button
             onClick={exportToExcel}
-            className="text-sm bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+            className="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-xl transition-colors font-medium"
           >
-            📥 Export to Excel
+            Export to Excel
           </button>
           <button
             onClick={fetchData}
-            className="text-sm bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-lg transition-colors"
+            className="text-sm bg-gray-100 hover:bg-gray-200 text-gray-500 px-4 py-2 rounded-xl transition-colors"
           >
             ↻ Refresh
           </button>
+          <ChangePasswordButton />
         </div>
       </div>
 
@@ -233,28 +548,32 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex space-x-1 mb-6 bg-gray-100 p-1 rounded-lg overflow-x-auto w-fit max-w-full">
-        {(
-          [
-            ["overview", "Overview"],
-            ["orders", "All Orders"],
-            ["breakdown", "Full Breakdown"],
-            ["pricing", "Pricing Tiers"],
-          ] as const
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={`px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${
-              activeTab === key
-                ? "bg-white shadow-sm text-gray-900"
-                : "text-black hover:text-black"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+      {/* Team Totals Section */}
+      <div className="mb-6 sm:mb-8">
+        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Team Totals</h3>
+        <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg overflow-x-auto w-fit max-w-full scrollbar-hide">
+          {(
+            [
+              ["overview", "Overview"],
+              ["orders", "All Orders"],
+              ["breakdown", "Full Breakdown"],
+              ["per-person", "Per Person"],
+              ["payments", "Payments"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`px-2.5 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap touch-highlight ${
+                activeTab === key
+                  ? "bg-white shadow-sm text-gray-900"
+                  : "text-black hover:text-black active:bg-gray-200"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Overview Tab */}
@@ -333,8 +652,8 @@ export default function AdminPage() {
             )}
           </div>
 
-          {/* By Design & Size side by side */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* By Design, Size & Fit */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
                 <h3 className="font-semibold text-black">By Design</h3>
@@ -398,6 +717,31 @@ export default function AdminPage() {
                 <p className="px-6 py-8 text-center text-gray-600">
                   No orders yet.
                 </p>
+              )}
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+                <h3 className="font-semibold text-black">By Fit</h3>
+              </div>
+              <table className="w-full text-sm text-black">
+                <thead>
+                  <tr className="border-b border-gray-100 text-black">
+                    <th className="px-6 py-3 text-left">Fit / Gender</th>
+                    <th className="px-6 py-3 text-right">Total Qty</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {((summary as any).byFit || []).map((f: any, i: number) => (
+                    <tr key={i} className="border-b border-gray-50">
+                      <td className="px-6 py-3 font-medium capitalize">{f.fit}</td>
+                      <td className="px-6 py-3 text-right font-bold">{f.total_qty}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {((summary as any).byFit || []).length === 0 && (
+                <p className="px-6 py-8 text-center text-gray-600">No orders yet.</p>
               )}
             </div>
           </div>
@@ -465,32 +809,128 @@ export default function AdminPage() {
                     </button>
                   </div>
                 </div>
-                <div className="overflow-x-auto">
-                <table className="w-full text-sm text-black min-w-[400px]">
-                  <thead>
-                    <tr className="text-black border-b border-gray-100">
-                      <th className="px-4 sm:px-6 py-2 text-left">Product</th>
-                      <th className="px-4 sm:px-6 py-2 text-left">Design</th>
-                      <th className="px-4 sm:px-6 py-2 text-left">Size</th>
-                      <th className="px-4 sm:px-6 py-2 text-right">Qty</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {order.items.map((item) => (
-                      <tr
-                        key={item.id}
-                        className="border-b border-gray-50"
-                      >
-                        <td className="px-6 py-2">{item.product_name}</td>
-                        <td className="px-6 py-2">{item.design_name}</td>
-                        <td className="px-6 py-2">{item.size_name}</td>
-                        <td className="px-6 py-2 text-right font-medium">
-                          {item.quantity}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <div className="divide-y divide-gray-50">
+                  {order.items.map((item) => (
+                    <div key={item.id} className="px-5 py-3">
+                      {editingItem === item.id ? (
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                            <div>
+                              <label className="block text-xs text-gray-400 mb-1">Product</label>
+                              <select value={editFields.productTypeId} onChange={e => setEditFields(f => ({ ...f, productTypeId: e.target.value, designId: "", fit: "" }))} className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg text-gray-900 bg-gray-50">
+                                {catalog.productTypes.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-400 mb-1">Design</label>
+                              <select value={editFields.designId} onChange={e => setEditFields(f => ({ ...f, designId: e.target.value }))} className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg text-gray-900 bg-gray-50">
+                                <option value="">— select —</option>
+                                {catalog.productDesigns.filter(pd => pd.product_type_id === editFields.productTypeId).map(pd => {
+                                  const design = catalog.designs.find(d => d.id === pd.design_id);
+                                  return design ? <option key={design.id} value={design.id}>{design.name}</option> : null;
+                                })}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-400 mb-1">Size</label>
+                              <select value={editFields.sizeId} onChange={e => setEditFields(f => ({ ...f, sizeId: e.target.value }))} className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg text-gray-900 bg-gray-50">
+                                {catalog.sizes.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                              </select>
+                            </div>
+                            {(() => {
+                              const product = catalog.productTypes.find(p => p.id === editFields.productTypeId);
+                              const fitOptions: string[] = product?.fit_options ? JSON.parse(product.fit_options) : [];
+                              return fitOptions.length > 1 ? (
+                                <div>
+                                  <label className="block text-xs text-gray-400 mb-1">Fit</label>
+                                  <select value={editFields.fit} onChange={e => setEditFields(f => ({ ...f, fit: e.target.value }))} className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg text-gray-900 bg-gray-50">
+                                    <option value="">— select —</option>
+                                    {fitOptions.map(fitOpt => <option key={fitOpt} value={fitOpt}>{fitOpt.charAt(0).toUpperCase() + fitOpt.slice(1)}</option>)}
+                                  </select>
+                                </div>
+                              ) : null;
+                            })()}
+                            <div>
+                              <label className="block text-xs text-gray-400 mb-1">Qty</label>
+                              <input type="number" min={1} max={50} value={editFields.quantity} onChange={e => setEditFields(f => ({ ...f, quantity: parseInt(e.target.value) || 1 }))} className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg text-gray-900 bg-gray-50" />
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={() => adminSaveItem(item.id)} disabled={savingItem || !editFields.designId || !editFields.sizeId} className="px-3 py-1.5 bg-gray-900 text-white rounded-lg text-xs font-medium hover:bg-gray-700 disabled:opacity-40 transition-colors">{savingItem ? "Saving…" : "Save"}</button>
+                            <button onClick={() => setEditingItem(null)} className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <span className="text-sm font-medium text-gray-900">{item.product_name}</span>
+                            <span className="text-sm text-gray-400"> · {item.design_name} · {item.size_name}{(item as any).fit ? ` · ${(item as any).fit}` : ""} · qty {item.quantity}</span>
+                          </div>
+                          <div className="flex gap-2 shrink-0">
+                            <button onClick={() => { setEditingItem(item.id); setEditFields({ productTypeId: item.product_type_id, designId: item.design_id, sizeId: item.size_id, fit: (item as any).fit || "", quantity: item.quantity }); }} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">Edit</button>
+                            <button onClick={() => adminDeleteItem(item.id)} disabled={deletingItem === item.id} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 hover:bg-red-100 text-red-600 transition-colors disabled:opacity-40">{deletingItem === item.id ? "…" : "Remove"}</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {/* Add item row */}
+                  {addingToOrder === order.id ? (
+                    <div className="px-5 py-3 bg-blue-50 space-y-2">
+                      <p className="text-xs font-semibold text-blue-700">Add Item</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Product</label>
+                          <select value={addFields.productTypeId} onChange={e => setAddFields(f => ({ ...f, productTypeId: e.target.value, designId: "", fit: "" }))} className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg text-gray-900 bg-white">
+                            <option value="">— select —</option>
+                            {catalog.productTypes.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Design</label>
+                          <select value={addFields.designId} onChange={e => setAddFields(f => ({ ...f, designId: e.target.value }))} className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg text-gray-900 bg-white">
+                            <option value="">— select —</option>
+                            {catalog.productDesigns.filter(pd => pd.product_type_id === addFields.productTypeId).map(pd => {
+                              const design = catalog.designs.find(d => d.id === pd.design_id);
+                              return design ? <option key={design.id} value={design.id}>{design.name}</option> : null;
+                            })}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Size</label>
+                          <select value={addFields.sizeId} onChange={e => setAddFields(f => ({ ...f, sizeId: e.target.value }))} className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg text-gray-900 bg-white">
+                            <option value="">— select —</option>
+                            {catalog.sizes.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          </select>
+                        </div>
+                        {(() => {
+                          const product = catalog.productTypes.find(p => p.id === addFields.productTypeId);
+                          const fitOptions: string[] = product?.fit_options ? JSON.parse(product.fit_options) : [];
+                          return fitOptions.length > 1 ? (
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-1">Fit</label>
+                              <select value={addFields.fit} onChange={e => setAddFields(f => ({ ...f, fit: e.target.value }))} className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg text-gray-900 bg-white">
+                                <option value="">— select —</option>
+                                {fitOptions.map(fitOpt => <option key={fitOpt} value={fitOpt}>{fitOpt.charAt(0).toUpperCase() + fitOpt.slice(1)}</option>)}
+                              </select>
+                            </div>
+                          ) : null;
+                        })()}
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Qty</label>
+                          <input type="number" min={1} max={50} value={addFields.quantity} onChange={e => setAddFields(f => ({ ...f, quantity: parseInt(e.target.value) || 1 }))} className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg text-gray-900 bg-white" />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => adminAddItem(order.id)} disabled={addingItem || !addFields.productTypeId || !addFields.designId || !addFields.sizeId} className="px-3 py-1.5 bg-gray-900 text-white rounded-lg text-xs font-medium hover:bg-gray-700 disabled:opacity-40 transition-colors">{addingItem ? "Adding…" : "Add Item"}</button>
+                        <button onClick={() => setAddingToOrder(null)} className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors">Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="px-5 py-2">
+                      <button onClick={() => setAddingToOrder(order.id)} className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors">+ Add item</button>
+                    </div>
+                  )}
                 </div>
                 {order.notes && (
                   <div className="px-6 py-2 bg-yellow-50 text-sm text-yellow-800">
@@ -526,6 +966,7 @@ export default function AdminPage() {
                   <th className="px-6 py-3 text-left">Product</th>
                   <th className="px-6 py-3 text-left">Design</th>
                   <th className="px-6 py-3 text-left">Size</th>
+                  <th className="px-6 py-3 text-left">Fit</th>
                   <th className="px-6 py-3 text-right">Total Qty</th>
                 </tr>
               </thead>
@@ -537,6 +978,7 @@ export default function AdminPage() {
                     </td>
                     <td className="px-6 py-2">{item.design_name}</td>
                     <td className="px-6 py-2">{item.size_name}</td>
+                    <td className="px-6 py-2 capitalize text-gray-500">{(item as any).fit || <span className="text-gray-300">—</span>}</td>
                     <td className="px-6 py-2 text-right font-bold">
                       {item.total_qty}
                     </td>
@@ -553,41 +995,119 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* Pricing Tab */}
-      {activeTab === "pricing" && (
-        <div className="space-y-6">
-          <p className="text-sm text-black">
-            Current pricing tiers. The highlighted tier shows the current price
-            based on total team order quantity.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {Object.entries(PRICING).map(([productId, tiers]) => {
-              const productQty =
-                summary.byProduct.find(
-                  (p) => p.product_type_id === productId
-                )?.total_qty || 0;
-              const productName =
-                summary.byProduct.find(
-                  (p) => p.product_type_id === productId
-                )?.product_name ||
-                productId;
-              return (
-                <div key={productId}>
-                  <PricingTable
-                    productTypeId={productId}
-                    productName={productName}
-                    tiers={tiers}
-                    currentTotalQty={productQty}
-                  />
-                  <p className="text-xs text-black mt-2 text-center">
-                    Current total: <strong>{productQty}</strong> units
-                  </p>
+      {/* Per Person Tab */}
+      {activeTab === "per-person" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-black">What each person owes based on current team pricing tiers.</p>
+            <div className="flex gap-2">
+              <button
+                onClick={fetchUserTotals}
+                disabled={userTotalsLoading}
+                className="text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {userTotalsLoading ? "Loading..." : "↻ Refresh"}
+              </button>
+              <button
+                onClick={exportToExcel}
+                disabled={userTotalsLoading || userTotals.length === 0}
+                className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 font-medium"
+              >
+                ↓ Download Excel
+              </button>
+            </div>
+          </div>
+          {userTotalsLoading ? (
+            <div className="flex justify-center py-12">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-amber-500"></div>
+            </div>
+          ) : userTotals.length === 0 ? (
+            <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-500">No orders yet.</div>
+          ) : (
+            userTotals
+              .slice()
+              .sort((a, b) => a.userName.localeCompare(b.userName))
+              .map((user) => {
+                // Derive this person's orders from the already-loaded orders data
+                const personOrders = orders.filter(
+                  (o) => o.user_name.toLowerCase().trim() === user.userName.toLowerCase().trim()
+                );
+                const allPaid = personOrders.length > 0 && personOrders.every((o) => o.status === "paid");
+                const somePaid = !allPaid && personOrders.some((o) => o.status === "paid");
+                const orderIds = personOrders.map((o) => o.id);
+                const isMarking = markingPaid === user.userName;
+                return (
+                <div key={user.userName} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                  <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <h4 className="font-semibold text-gray-900">{user.userName}</h4>
+                      {allPaid ? (
+                        <span className="text-xs bg-green-100 text-green-700 font-medium px-2.5 py-1 rounded-full">✓ Paid</span>
+                      ) : somePaid ? (
+                        <span className="text-xs bg-yellow-100 text-yellow-700 font-medium px-2.5 py-1 rounded-full">Partially Paid</span>
+                      ) : (
+                        <span className="text-xs bg-red-100 text-red-700 font-medium px-2.5 py-1 rounded-full">Unpaid</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg font-bold text-blue-700">${user.grandTotalUSD.toFixed(2)}</span>
+                      {!allPaid && (
+                        <button
+                          onClick={() => handleMarkAllPaid(user.userName, orderIds)}
+                          disabled={isMarking}
+                          className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 font-medium"
+                        >
+                          {isMarking ? "Saving..." : "Mark All Paid"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-black">
+                      <thead>
+                        <tr className="border-b border-gray-100 text-gray-500">
+                          <th className="px-6 py-2 text-left font-medium">Product</th>
+                          <th className="px-6 py-2 text-left font-medium">Design</th>
+                          <th className="px-6 py-2 text-left font-medium">Size</th>
+                          <th className="px-6 py-2 text-right font-medium">Qty</th>
+                          <th className="px-6 py-2 text-right font-medium">Unit $</th>
+                          <th className="px-6 py-2 text-right font-medium">Total $</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {user.items.map((item, i) => (
+                          <tr key={i} className="border-b border-gray-50">
+                            <td className="px-6 py-2">{item.productName}</td>
+                            <td className="px-6 py-2">{item.designName}</td>
+                            <td className="px-6 py-2">{item.sizeName}</td>
+                            <td className="px-6 py-2 text-right">{item.quantity}</td>
+                            <td className="px-6 py-2 text-right">${item.unitPriceUSD.toFixed(2)}</td>
+                            <td className="px-6 py-2 text-right font-semibold">${item.totalUSD.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               );
-            })}
-          </div>
+              })
+          )}
         </div>
       )}
+
+      {/* Payments Tab */}
+      {activeTab === "payments" && <SubmittedPayments />}
+
+      {/* Pricing Tab */}
+      {activeTab === "pricing" && (
+        <PricingTiersViewer
+          summary={summary}
+          exchangeRate={data.exchangeRate}
+        />
+      )}
+
+      {/* Products Tab — managed at /products */}
+
     </div>
     </PasswordGate>
   );

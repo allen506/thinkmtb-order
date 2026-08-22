@@ -1,8 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { getUnitPrice } from "@/lib/pricing";
+import { getUnitPriceCRC } from "@/lib/pricing";
+import { getExchangeRate, crcToUsd } from "@/lib/exchange-rate";
+import { isAdminAuthenticated, unauthorized } from '@/lib/admin-auth';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  if (!isAdminAuthenticated(request)) return unauthorized();
   try {
     const db = getDb();
 
@@ -14,6 +17,9 @@ export async function GET() {
           (SELECT COALESCE(SUM(quantity), 0) FROM order_items) as total_items`
       )
       .get() as { total_orders: number; total_items: number };
+
+    // Get live exchange rate
+    const { compra: exchangeRate } = await getExchangeRate();
 
     // Quantities by product type
     const byProduct = db
@@ -29,15 +35,16 @@ export async function GET() {
       )
       .all() as { product_type_id: string; product_name: string; total_qty: number }[];
 
-    // Calculate pricing based on total quantities
+    // Calculate pricing based on total quantities and live exchange rate
     const byProductWithPricing = byProduct.map((p) => {
-      const pricing = getUnitPrice(p.product_type_id, p.total_qty);
+      const priceCRC = getUnitPriceCRC(p.product_type_id, p.total_qty) ?? 0;
+      const priceUSD = crcToUsd(priceCRC, exchangeRate);
       return {
         ...p,
-        tierPriceCRC: pricing?.priceCRC || 0,
-        tierPriceUSD: pricing?.priceUSD || 0,
-        totalCRC: (pricing?.priceCRC || 0) * p.total_qty,
-        totalUSD: (pricing?.priceUSD || 0) * p.total_qty,
+        tierPriceCRC: priceCRC,
+        tierPriceUSD: priceUSD,
+        totalCRC: priceCRC * p.total_qty,
+        totalUSD: priceUSD * p.total_qty,
       };
     });
 
@@ -69,6 +76,18 @@ export async function GET() {
       )
       .all();
 
+    // Quantities by fit/gender
+    const byFit = db
+      .prepare(
+        `SELECT 
+          COALESCE(NULLIF(oi.fit, ''), 'unisex') as fit,
+          SUM(oi.quantity) as total_qty
+         FROM order_items oi
+         GROUP BY COALESCE(NULLIF(oi.fit, ''), 'unisex')
+         ORDER BY fit`
+      )
+      .all();
+
     // Quantities by product + design + size (full breakdown)
     const fullBreakdown = db
       .prepare(
@@ -79,12 +98,13 @@ export async function GET() {
           d.name as design_name,
           oi.size_id,
           s.name as size_name,
+          COALESCE(oi.fit, '') as fit,
           SUM(oi.quantity) as total_qty
          FROM order_items oi
          JOIN product_types pt ON oi.product_type_id = pt.id
          JOIN designs d ON oi.design_id = d.id
          JOIN sizes s ON oi.size_id = s.id
-         GROUP BY oi.product_type_id, oi.design_id, oi.size_id
+         GROUP BY oi.product_type_id, oi.design_id, oi.size_id, oi.fit
          ORDER BY pt.sort_order, d.sort_order, s.sort_order`
       )
       .all();
@@ -105,7 +125,8 @@ export async function GET() {
           `SELECT oi.*, 
             pt.name as product_name,
             d.name as design_name,
-            s.name as size_name
+            s.name as size_name,
+            COALESCE(oi.fit, '') as fit
            FROM order_items oi
            JOIN product_types pt ON oi.product_type_id = pt.id
            JOIN designs d ON oi.design_id = d.id
@@ -124,9 +145,11 @@ export async function GET() {
         byProduct: byProductWithPricing,
         byDesign,
         bySize,
+        byFit,
         fullBreakdown,
       },
       orders: orderDetails,
+      exchangeRate,
     });
   } catch (error) {
     console.error("Error fetching admin summary:", error);

@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { getUnitPrice } from "@/lib/pricing";
+import { getUnitPriceCRC } from "@/lib/pricing";
+import { getExchangeRate, crcToUsd } from "@/lib/exchange-rate";
 
 export async function GET() {
   try {
     const db = getDb();
+
+    // Get live exchange rate
+    const { compra: exchangeRate } = await getExchangeRate();
 
     // Get total quantities per product type (for tier pricing)
     const productTotals = db
@@ -17,9 +21,12 @@ export async function GET() {
 
     const tierPrices: Record<string, { priceCRC: number; priceUSD: number }> = {};
     for (const pt of productTotals) {
-      const price = getUnitPrice(pt.product_type_id, pt.total_qty);
-      if (price) {
-        tierPrices[pt.product_type_id] = price;
+      const priceCRC = getUnitPriceCRC(pt.product_type_id, pt.total_qty);
+      if (priceCRC !== null) {
+        tierPrices[pt.product_type_id] = {
+          priceCRC,
+          priceUSD: crcToUsd(priceCRC, exchangeRate),
+        };
       }
     }
 
@@ -42,6 +49,7 @@ export async function GET() {
           productName: string;
           designName: string;
           sizeName: string;
+          fit: string;
           quantity: number;
           unitPriceUSD: number;
           totalUSD: number;
@@ -53,7 +61,7 @@ export async function GET() {
     for (const order of orders) {
       const items = db
         .prepare(
-          `SELECT oi.product_type_id, oi.quantity,
+          `SELECT oi.product_type_id, oi.quantity, COALESCE(oi.fit, '') as fit,
             pt.name as product_name,
             d.name as design_name,
             s.name as size_name
@@ -66,6 +74,7 @@ export async function GET() {
         .all(order.id) as {
         product_type_id: string;
         quantity: number;
+        fit: string;
         product_name: string;
         design_name: string;
         size_name: string;
@@ -88,6 +97,7 @@ export async function GET() {
           productName: item.product_name,
           designName: item.design_name,
           sizeName: item.size_name,
+          fit: item.fit,
           quantity: item.quantity,
           unitPriceUSD: unitPrice,
           totalUSD,
@@ -112,6 +122,7 @@ export async function GET() {
       teamTotalUSD,
       teamTotalItems,
       tierPrices,
+      exchangeRate,
     });
   } catch (error) {
     console.error("Error fetching user totals:", error);

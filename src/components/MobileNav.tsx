@@ -2,8 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import type { UserRole } from "./NavBar";
 
-export default function MobileNav() {
+interface MobileNavProps {
+  role: UserRole;
+}
+
+export default function MobileNav({ role }: MobileNavProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -27,27 +32,67 @@ export default function MobileNav() {
       {open && (
         <div className="absolute top-16 left-0 right-0 bg-gray-900 border-t border-gray-700 shadow-lg z-50">
           <div className="px-4 py-3 space-y-2">
-            <Link
-              href="/"
-              onClick={() => setOpen(false)}
-              className="block px-3 py-3 rounded-md text-base font-medium hover:bg-gray-700 transition-colors"
-            >
-              Place Order
-            </Link>
-            <Link
-              href="/my-orders"
-              onClick={() => setOpen(false)}
-              className="block px-3 py-3 rounded-md text-base font-medium hover:bg-gray-700 transition-colors"
-            >
-              My Orders
-            </Link>
-            <Link
-              href="/admin"
-              onClick={() => setOpen(false)}
-              className="block px-3 py-3 rounded-md text-base font-medium bg-amber-600 hover:bg-amber-700 transition-colors text-center"
-            >
-              TeamTotals
-            </Link>
+            {role === "user" && (
+              <>
+                <Link
+                  href="/user"
+                  onClick={() => setOpen(false)}
+                  className="block px-3 py-3 rounded-md text-base font-medium hover:bg-gray-700 transition-colors"
+                >
+                  Dashboard
+                </Link>
+                <Link
+                  href="/designs"
+                  onClick={() => setOpen(false)}
+                  className="block px-3 py-3 rounded-md text-base font-medium hover:bg-gray-700 transition-colors"
+                >
+                  Designs
+                </Link>
+              </>
+            )}
+
+            {role === "admin" && (
+              <>
+                <Link
+                  href="/designs"
+                  onClick={() => setOpen(false)}
+                  className="block px-3 py-3 rounded-md text-base font-medium hover:bg-gray-700 transition-colors"
+                >
+                  Designs
+                </Link>
+                <Link
+                  href="/products"
+                  onClick={() => setOpen(false)}
+                  className="block px-3 py-3 rounded-md text-base font-medium hover:bg-gray-700 transition-colors"
+                >
+                  Products
+                </Link>
+                <Link
+                  href="/admin"
+                  onClick={() => setOpen(false)}
+                  className="block px-3 py-3 rounded-md text-base font-medium bg-amber-600 hover:bg-amber-700 transition-colors text-center"
+                >
+                  Team Totals
+                </Link>
+                <Link
+                  href="/admin/settings"
+                  onClick={() => setOpen(false)}
+                  className="block px-3 py-3 rounded-md text-base font-medium hover:bg-gray-700 transition-colors"
+                >
+                  Settings
+                </Link>
+              </>
+            )}
+
+            {!role && (
+              <Link
+                href="/"
+                onClick={() => setOpen(false)}
+                className="block px-3 py-3 rounded-md text-base font-medium hover:bg-gray-700 transition-colors"
+              >
+                Login
+              </Link>
+            )}
           </div>
         </div>
       )}

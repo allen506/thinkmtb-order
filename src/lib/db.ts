@@ -95,10 +95,141 @@ function initializeDb(db: Database.Database) {
       id INTEGER PRIMARY KEY CHECK (id = 1),
       next_val INTEGER NOT NULL DEFAULT 100
     );
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS user_profiles (
+      pin TEXT PRIMARY KEY,
+      full_name TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id TEXT NOT NULL,
+      user_name TEXT NOT NULL,
+      amount_usd REAL,
+      amount_crc REAL,
+      method TEXT NOT NULL,
+      reference TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      admin_notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (order_id) REFERENCES orders(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS admin_sessions (
+      token TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at TEXT NOT NULL DEFAULT (datetime('now', '+24 hours'))
+    );
+
+    CREATE TABLE IF NOT EXISTS smtp_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      host TEXT NOT NULL,
+      port INTEGER NOT NULL,
+      secure INTEGER NOT NULL DEFAULT 1,
+      username TEXT NOT NULL,
+      password TEXT NOT NULL,
+      from_email TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS admin_emails (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   // Ensure the sequence row exists
   db.prepare(`INSERT OR IGNORE INTO order_number_seq (id, next_val) VALUES (1, 100)`).run();
+
+  // Ensure default settings exist
+  db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('ordering_active', '1')`).run();
+  db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('admin_password', 'thinkmtb123')`).run();
+  db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('club_name', 'ThinkMTB')`).run();
+  db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payment_zelle', '')`).run();
+  db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payment_venmo', '')`).run();
+  db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payment_paypal', '')`).run();
+  db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payment_cash', 'Pay in person at the event or contact an admin.')`).run();
+
+  // Add sleeve_length column to order_items if it doesn't exist
+  const itemCols = (db.prepare(`PRAGMA table_info(order_items)`).all() as { name: string }[]).map(c => c.name);
+  if (!itemCols.includes('sleeve_length')) {
+    db.prepare(`ALTER TABLE order_items ADD COLUMN sleeve_length TEXT`).run();
+  }
+  if (!itemCols.includes('fit')) {
+    db.prepare(`ALTER TABLE order_items ADD COLUMN fit TEXT`).run();
+  }
+  // Add fit_options column to product_types if it doesn't exist
+  const ptCols = (db.prepare(`PRAGMA table_info(product_types)`).all() as { name: string }[]).map(c => c.name);
+  if (!ptCols.includes('fit_options')) {
+    db.prepare(`ALTER TABLE product_types ADD COLUMN fit_options TEXT NOT NULL DEFAULT '["unisex"]'`).run();
+  }
+
+  // Add designed_for column to designs if it doesn't exist
+  const designCols = (db.prepare(`PRAGMA table_info(designs)`).all() as { name: string }[]).map(c => c.name);
+  if (!designCols.includes('designed_for')) {
+    db.prepare(`ALTER TABLE designs ADD COLUMN designed_for TEXT`).run();
+  }
+
+  // Create product_designs table if it doesn't exist
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS product_designs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_type_id TEXT NOT NULL,
+      design_id TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(product_type_id, design_id),
+      FOREIGN KEY (product_type_id) REFERENCES product_types(id),
+      FOREIGN KEY (design_id) REFERENCES designs(id)
+    );
+  `);
+
+  // Rename enduro-jersey to "Enduro Long Sleeve" if it still has the old name
+  db.prepare(
+    `UPDATE product_types SET name = 'Enduro Long Sleeve', description = 'Long Sleeve Jersey'
+     WHERE id = 'enduro-jersey' AND name = 'BMX / Enduro / Downhill Jersey'`
+  ).run();
+
+  // Add enduro-short product if it doesn't exist
+  db.prepare(`
+    INSERT OR IGNORE INTO product_types (id, name, description, category, example_url, sort_order)
+    VALUES ('enduro-short', 'Enduro Short Sleeve', 'Short Sleeve Dry Fit Jersey', 'jersey',
+      'https://www.cmssportswear.com/tshirt-personalizada', 3)
+  `).run();
+  // Shift wind-vest sort order if needed to make room
+  db.prepare(`UPDATE product_types SET sort_order = 4 WHERE id = 'wind-vest' AND sort_order = 3`).run();
+
+  // Add enduro-short pricing tiers if not already present
+  const shortTierCount = (db.prepare(
+    `SELECT COUNT(*) as count FROM pricing_tiers WHERE product_type_id = 'enduro-short'`
+  ).get() as { count: number }).count;
+  if (shortTierCount === 0) {
+    const insertTier = db.prepare(
+      `INSERT INTO pricing_tiers (product_type_id, min_qty, max_qty, price_crc, price_usd) VALUES (?, ?, ?, ?, ?)`
+    );
+    const shortTiers = [
+      [1, 1, 24000, 48.48],
+      [2, 5, 22000, 44.44],
+      [6, 10, 21000, 42.42],
+      [11, 20, 20000, 40.40],
+      [21, 30, 18000, 36.36],
+      [31, 50, 16000, 32.32],
+      [51, 100, 14000, 28.28],
+    ];
+    for (const t of shortTiers) {
+      insertTier.run('enduro-short', t[0], t[1], t[2], t[3]);
+    }
+  }
 
   // Add order_number column if it was not part of the original schema
   const cols = (db.prepare(`PRAGMA table_info(orders)`).all() as { name: string }[]).map(c => c.name);
@@ -118,6 +249,18 @@ function initializeDb(db: Database.Database) {
       bumpSeq.run(n);
     })();
   }
+
+  // Add final_designs table if it doesn't exist
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS final_designs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      image_url TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
 
   // Seed initial data if tables are empty
   const designCount = db.prepare("SELECT COUNT(*) as count FROM designs").get() as { count: number };
@@ -147,8 +290,9 @@ function seedData(db: Database.Database) {
   );
   const products = [
     ["pro-jersey", "CMS PRO LINE Cycling Jersey", "Jersey Only - Pro line", "jersey", "https://www.cmssportswear.com/linea-pro-personalizados", 1],
-    ["enduro-jersey", "BMX / Enduro / Downhill Jersey", "Long Sleeve Jersey", "jersey", "https://www.cmssportswear.com/jersey-downhill-bmx-enduro-personalizado", 2],
-    ["wind-vest", "Wind Vest (Windbreaker)", "Windbreaker Vest", "vest", "https://www.cmssportswear.com/hombres-corta-vientos-chalecos", 3],
+    ["enduro-jersey", "Enduro Long Sleeve", "Long Sleeve Jersey", "jersey", "https://www.cmssportswear.com/jersey-downhill-bmx-enduro-personalizado", 2],
+    ["enduro-short", "Enduro Short Sleeve", "Short Sleeve Dry Fit Jersey", "jersey", "https://www.cmssportswear.com/tshirt-personalizada", 3],
+    ["wind-vest", "Wind Vest (Windbreaker)", "Windbreaker Vest", "vest", "https://www.cmssportswear.com/hombres-corta-vientos-chalecos", 4],
   ];
   for (const p of products) {
     insertProduct.run(...p);
@@ -187,9 +331,23 @@ function seedData(db: Database.Database) {
     insertTier.run("enduro-jersey", t[0], t[1], t[2], t[3]);
   }
 
-  // Wind vest pricing (same as enduro)
+  // Wind vest pricing (same as enduro long)
   for (const t of enduroTiers) {
     insertTier.run("wind-vest", t[0], t[1], t[2], t[3]);
+  }
+
+  // Enduro short sleeve pricing
+  const enduroShortTiers = [
+    [1, 1, 24000, 48.48],
+    [2, 5, 22000, 44.44],
+    [6, 10, 21000, 42.42],
+    [11, 20, 20000, 40.40],
+    [21, 30, 18000, 36.36],
+    [31, 50, 16000, 32.32],
+    [51, 100, 14000, 28.28],
+  ];
+  for (const t of enduroShortTiers) {
+    insertTier.run("enduro-short", t[0], t[1], t[2], t[3]);
   }
 
   // Insert sizes

@@ -16,7 +16,7 @@ export async function GET() {
       .all() as { id: string; user_name: string; status: string; notes: string; created_at: string }[];
 
     const getItems = db.prepare(
-      `SELECT oi.id, oi.product_type_id, oi.design_id, oi.size_id, oi.quantity,
+      `SELECT oi.id, oi.product_type_id, oi.design_id, oi.size_id, oi.sleeve_length, COALESCE(oi.fit, '') as fit, oi.quantity,
         pt.name as product_name,
         d.name as design_name,
         s.name as size_name
@@ -72,40 +72,49 @@ export async function POST(request: NextRequest) {
     }
 
     const db = getDb();
-    const orderId = uuidv4();
 
-    const insertOrder = db.prepare(
-      `INSERT INTO orders (id, user_name, notes, order_number) 
-       VALUES (?, ?, ?, ?)`
-    );
+    // Reuse the user's existing pending order for this campaign
+    const existing = db
+      .prepare(`SELECT id, order_number FROM orders WHERE user_name = ? AND status = 'pending' LIMIT 1`)
+      .get(body.userName) as { id: string; order_number: string } | undefined;
 
     const insertItem = db.prepare(
-      `INSERT INTO order_items (order_id, product_type_id, design_id, size_id, quantity) 
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO order_items (order_id, product_type_id, design_id, size_id, sleeve_length, fit, quantity)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     );
 
-    let orderNumber = "";
-    const transaction = db.transaction(() => {
-      const seq = db.prepare(`SELECT next_val FROM order_number_seq WHERE id = 1`).get() as { next_val: number };
-      orderNumber = `thnk-${seq.next_val}`;
-      db.prepare(`UPDATE order_number_seq SET next_val = ? WHERE id = 1`).run(seq.next_val + 1);
+    let orderId: string;
+    let orderNumber: string;
 
-      insertOrder.run(orderId, body.userName, body.notes || null, orderNumber);
+    if (existing) {
+      // Add items to the existing order
+      orderId = existing.id;
+      orderNumber = existing.order_number;
+      const addItems = db.transaction(() => {
+        for (const item of body.items) {
+          insertItem.run(orderId, item.productTypeId, item.designId, item.sizeId, item.sleeveLength || null, item.fit || null, item.quantity);
+        }
+      });
+      addItems();
+    } else {
+      // Create a new order for this user
+      orderId = uuidv4();
+      const insertOrder = db.prepare(
+        `INSERT INTO orders (id, user_name, notes, order_number) VALUES (?, ?, ?, ?)`
+      );
+      const createOrder = db.transaction(() => {
+        const seq = db.prepare(`SELECT next_val FROM order_number_seq WHERE id = 1`).get() as { next_val: number };
+        orderNumber = `thnk-${seq.next_val}`;
+        db.prepare(`UPDATE order_number_seq SET next_val = ? WHERE id = 1`).run(seq.next_val + 1);
+        insertOrder.run(orderId, body.userName, body.notes || null, orderNumber!);
+        for (const item of body.items) {
+          insertItem.run(orderId, item.productTypeId, item.designId, item.sizeId, item.sleeveLength || null, item.fit || null, item.quantity);
+        }
+      });
+      createOrder();
+    }
 
-      for (const item of body.items) {
-        insertItem.run(
-          orderId,
-          item.productTypeId,
-          item.designId,
-          item.sizeId,
-          item.quantity
-        );
-      }
-    });
-
-    transaction();
-
-    return NextResponse.json({ orderId, orderNumber, message: "Order placed successfully" }, { status: 201 });
+    return NextResponse.json({ orderId, orderNumber: orderNumber!, message: "Order updated successfully" }, { status: 201 });
   } catch (error) {
     console.error("Error creating order:", error);
     return NextResponse.json(

@@ -5,6 +5,7 @@ export interface Design {
   image_url: string;
   active: number;
   sort_order: number;
+  designed_for?: string; // JSON array string like '["jersey","bib"]'
 }
 
 export interface ProductType {
@@ -15,6 +16,7 @@ export interface ProductType {
   example_url: string;
   active: number;
   sort_order: number;
+  fit_options?: string; // JSON array e.g. '["unisex"]' or '["men","women"]'
 }
 
 export interface Size {
@@ -38,6 +40,7 @@ export interface OrderItem {
   product_type_id: string;
   design_id: string;
   size_id: string;
+  sleeve_length?: string | null;
   quantity: number;
   unit_price_crc: number | null;
   unit_price_usd: number | null;
@@ -58,6 +61,8 @@ export interface OrderFormData {
     productTypeId: string;
     designId: string;
     sizeId: string;
+    sleeveLength?: string;
+    fit?: string | null;
     quantity: number;
   }[];
 }

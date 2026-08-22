@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import DesignSelector from "@/components/DesignSelector";
 import ProductSelector from "@/components/ProductSelector";
-import PricingTable from "@/components/PricingTable";
 import { Design, ProductType, Size } from "@/lib/types";
-import { PRICING, getUnitPrice } from "@/lib/pricing";
+import { getUnitPriceCRC } from "@/lib/pricing";
 
 function generateId(): string {
   try {
@@ -15,17 +15,12 @@ function generateId(): string {
   }
 }
 
-const PRODUCT_URLS: Record<string, string> = {
-  "wind-vest": "https://www.cmssportswear.com/hombres-corta-vientos-chalecos",
-  "pro-jersey": "https://www.cmssportswear.com/jersey-pro-personalizado",
-  "enduro-jersey": "https://www.cmssportswear.com/jersey-downhill-bmx-enduro-personalizado",
-};
-
 interface OrderItem {
   id: string;
   productTypeId: string;
   designId: string;
   sizeId: string;
+  fit: string;
   quantity: number;
 }
 
@@ -48,6 +43,7 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
         productTypeId: "",
         designId: "",
         sizeId: "",
+        fit: "",
         quantity: 1,
       },
     ]);
@@ -58,21 +54,34 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
 
   // Team-wide quantities per product (for pricing tier calculation)
   const [teamQty, setTeamQty] = useState<Record<string, number>>({});
+  const [exchangeRate, setExchangeRate] = useState<number | undefined>(undefined);
+  const [exchangeRateFecha, setExchangeRateFecha] = useState<string>("");
 
-  // Form data
+  // Form data — pre-populated from localStorage identity
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [lockedName, setLockedName] = useState(false);
   const [items, setItems] = useState<OrderItem[]>([
     {
       id: generateId(),
       productTypeId: "",
       designId: "",
       sizeId: "",
+      fit: "",
       quantity: 1,
     },
   ]);
 
   useEffect(() => {
+    // Load saved identity so name is always consistent across devices
+    const stored = localStorage.getItem("thinkmtb-user-name");
+    if (stored) {
+      const parts = stored.trim().split(" ");
+      setFirstName(parts[0] || "");
+      setLastName(parts.slice(1).join(" ") || "");
+      setLockedName(true);
+    }
+
     fetch("/api/catalog")
       .then((res) => res.json())
       .then((data) => {
@@ -90,6 +99,16 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
       .then((res) => res.json())
       .then((data) => setTeamQty(data || {}))
       .catch(() => {});
+    // Fetch live exchange rate
+    fetch("/api/exchange-rate")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.compra) {
+          setExchangeRate(data.compra);
+          setExchangeRateFecha(data.fecha || "");
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const addItem = () => {
@@ -100,6 +119,7 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
         productTypeId: items[0]?.productTypeId || "",
         designId: items[0]?.designId || "",
         sizeId: "",
+        fit: "",
         quantity: 1,
       },
     ]);
@@ -127,9 +147,21 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
 
   const setProductForAll = useCallback((productTypeId: string) => {
     setItems((prev) =>
-      prev.map((item) => ({ ...item, productTypeId }))
+      prev.map((item) => ({ ...item, productTypeId, fit: "" }))
     );
   }, []);
+
+  // Get fit options for selected product
+  const selectedFitOptions: string[] = (() => {
+    const pt = productTypes.find(p => p.id === items[0]?.productTypeId);
+    if (!pt?.fit_options) return ["unisex"];
+    try { return JSON.parse(pt.fit_options); } catch { return ["unisex"]; }
+  })();
+
+  // Get category of selected product
+  const selectedProductCategory = items[0]?.productTypeId
+    ? productTypes.find((pt) => pt.id === items[0].productTypeId)?.category
+    : undefined;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,8 +172,7 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
     const designOk = !!items[0]?.designId;
     const productOk = !!items[0]?.productTypeId;
     const detailsOk = items.every(
-      (item) => item.productTypeId && item.designId && item.sizeId && item.quantity > 0
-    );
+      (item) => item.productTypeId && item.designId && item.sizeId && item.quantity > 0        && (selectedFitOptions.length <= 1 || !!item.fit)    );
     if (!nameOk || !designOk || !productOk || !detailsOk) return;
 
     setSubmitting(true);
@@ -157,6 +188,7 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
             productTypeId: item.productTypeId,
             designId: item.designId,
             sizeId: item.sizeId,
+            fit: item.fit || null,
             quantity: item.quantity,
           })),
         }),
@@ -169,6 +201,8 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
 
       setSuccess(true);
       setShowErrors(false);
+      // Store user's name for My Orders page
+      localStorage.setItem("thinkmtb-user-name", `${firstName} ${lastName}`.trim());
       // Reset form
       setItems([
         {
@@ -176,6 +210,7 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
           productTypeId: "",
           designId: "",
           sizeId: "",
+          fit: "",
           quantity: 1,
         },
       ]);
@@ -203,17 +238,24 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
           Order Placed Successfully!
         </h2>
         <p className="text-gray-600 mb-8">
-          Thank you, {firstName}! Your ThinkMTB order has been received. We&apos;ll
-          confirm details and pricing once all team orders are in.
+          Your items have been added to your campaign order, {firstName}! You can add more items or check your order anytime from My Orders.
         </p>
-        <button
-          onClick={() => {
-            setSuccess(false);
-          }}
-          className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium"
-        >
-          Place Another Order
-        </button>
+        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <Link
+            href="/user/my-orders"
+            className="inline-block bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 transition-colors font-medium"
+          >
+            📦 View Your Orders
+          </Link>
+          <button
+            onClick={() => {
+              setSuccess(false);
+            }}
+            className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+          >
+            ➕ Place Another Order
+          </button>
+        </div>
       </div>
     );
   }
@@ -226,8 +268,8 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
 
   // Per-step validation
   const step1Complete = !!firstName.trim() && !!lastName.trim();
-  const step2Complete = !!items[0]?.designId;
-  const step3Complete = !!items[0]?.productTypeId;
+  const step2Complete = !!items[0]?.productTypeId;
+  const step3Complete = !!items[0]?.designId;
   const step4Complete = allItemsValid && items.every(i => i.sizeId);
 
   // Calculate per-item prices based on team volume + user's own items
@@ -238,13 +280,14 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
       .filter((i) => i.productTypeId === productTypeId)
       .reduce((sum, i) => sum + i.quantity, 0);
     const totalTeamQty = (teamQty[productTypeId] || 0) + formQtyForProduct;
-    const unitPrice = getUnitPrice(productTypeId, totalTeamQty);
-    if (!unitPrice) return null;
+    const priceCRC = getUnitPriceCRC(productTypeId, totalTeamQty);
+    if (!priceCRC || !exchangeRate) return null;
+    const priceUSD = priceCRC / exchangeRate;
     return {
-      unitUSD: unitPrice.priceUSD,
-      unitCRC: unitPrice.priceCRC,
-      totalUSD: unitPrice.priceUSD * qty,
-      totalCRC: unitPrice.priceCRC * qty,
+      unitUSD: priceUSD,
+      unitCRC: priceCRC,
+      totalUSD: priceUSD * qty,
+      totalCRC: priceCRC * qty,
       teamTotal: totalTeamQty,
     };
   };
@@ -263,82 +306,87 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
     <div className="max-w-4xl mx-auto">
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Step 1 — Your Name */}
-        <div className={`bg-white rounded-xl shadow-sm border p-6 transition-colors ${
-          showErrors && !step1Complete ? "border-red-400 ring-2 ring-red-100" : "border-gray-200"
-        }`}>
-          <h3 className="text-lg font-semibold mb-3 text-black">
-            Step 1 — Your Name
-            {showErrors && !step1Complete && (
-              <span className="text-red-500 text-sm font-normal ml-2">— Please enter your name</span>
-            )}
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-md">
-            <div>
-              <label className="block text-xs font-medium text-black mb-1">
-                First Name *
-              </label>
-              <input
-                type="text"
-                required
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-300 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                placeholder="First name"
-              />
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <h3 className="text-base font-semibold mb-4 text-gray-900">Step 1 — Your Name</h3>
+          {lockedName ? (
+            <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 max-w-md">
+              <span className="text-blue-900 font-medium">{firstName} {lastName}</span>
+              <Link
+                href="/user"
+                onClick={() => {
+                  localStorage.removeItem("thinkmtb-user-name");
+                }}
+                className="ml-auto text-xs text-blue-600 hover:text-blue-800 underline"
+              >
+                Not you?
+              </Link>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-black mb-1">
-                Last Name *
-              </label>
-              <input
-                type="text"
-                required
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-300 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                placeholder="Last name"
-              />
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-md">
+              <div>
+                <label className="block text-xs font-medium text-black mb-1">First Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-gray-300 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                  placeholder="First name"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-black mb-1">Last Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-gray-300 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                  placeholder="Last name"
+                />
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
-        {/* Step 2 — Design Selection */}
-        <div className={`bg-white rounded-xl shadow-sm border p-6 transition-colors ${
-          showErrors && !step2Complete ? "border-red-400 ring-2 ring-red-100" : "border-gray-200"
+        {/* Step 2 — Product Selection */}
+        <div className={`bg-white rounded-2xl border shadow-sm p-6 transition-colors ${
+          showErrors && !step2Complete ? "border-red-300 ring-2 ring-red-50" : "border-gray-100"
         }`}>
           {showErrors && !step2Complete && (
+            <p className="text-red-500 text-sm mb-2">Please select a product</p>
+          )}
+          <ProductSelector
+            productTypes={productTypes}
+            selectedProductId={items[0]?.productTypeId || ""}
+            onSelect={(id) => { setProductForAll(id); setDesignForAll(""); }}
+          />
+        </div>
+
+        {/* Step 3 — Design Selection (filtered by selected product) */}
+        <div className={`bg-white rounded-2xl border shadow-sm p-6 transition-colors ${
+          showErrors && !step3Complete ? "border-red-300 ring-2 ring-red-50" : "border-gray-100"
+        }`}>
+          {showErrors && !step3Complete && (
             <p className="text-red-500 text-sm mb-2">Please select a design</p>
           )}
           <DesignSelector
             designs={designs}
             selectedDesignId={items[0]?.designId || ""}
             onSelect={setDesignForAll}
-          />
-        </div>
-
-        {/* Step 3 — Product Selection */}
-        <div className={`bg-white rounded-xl shadow-sm border p-6 transition-colors ${
-          showErrors && !step3Complete ? "border-red-400 ring-2 ring-red-100" : "border-gray-200"
-        }`}>
-          {showErrors && !step3Complete && (
-            <p className="text-red-500 text-sm mb-2">Please select a product</p>
-          )}
-          <ProductSelector
-            productTypes={productTypes}
-            selectedProductId={items[0]?.productTypeId || ""}
-            onSelect={setProductForAll}
+            productCategory={selectedProductCategory}
           />
         </div>
 
         {/* Step 4 — Order Details */}
-        <div className={`bg-white rounded-xl shadow-sm border p-6 transition-colors ${
-          showErrors && !step4Complete ? "border-red-400 ring-2 ring-red-100" : "border-gray-200"
+        <div className={`bg-white rounded-2xl border shadow-sm p-6 transition-colors ${
+          showErrors && !step4Complete ? "border-red-300 ring-2 ring-red-50" : "border-gray-100"
         }`}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-            <h3 className="text-lg font-semibold text-gray-800">
+            <h3 className="text-base font-semibold text-gray-900">
               Step 4 — Order Details
               {showErrors && !step4Complete && (
-                <span className="text-red-500 text-sm font-normal ml-2">— Please complete all fields</span>
+                <span className="text-red-400 text-sm font-normal ml-2">— Please complete all fields</span>
               )}
             </h3>
             <button
@@ -386,49 +434,38 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      Product Type
-                    </label>
-                    <select
-                      value={item.productTypeId}
-                      onChange={(e) =>
-                        updateItem(item.id, "productTypeId", e.target.value)
-                      }
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
-                    >
-                      <option value="">Select product...</option>
-                      {productTypes.map((pt) => (
-                        <option key={pt.id} value={pt.id}>
-                          {pt.name}
-                        </option>
-                      ))}
-                    </select>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Product</label>
+                    <div className="px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 truncate">
+                      {productTypes.find(p => p.id === item.productTypeId)?.name || <span className="text-gray-400">—</span>}
+                    </div>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      Design
-                    </label>
-                    <select
-                      value={item.designId}
-                      onChange={(e) =>
-                        updateItem(item.id, "designId", e.target.value)
-                      }
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
-                    >
-                      <option value="">Select design...</option>
-                      {designs.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name}
-                        </option>
-                      ))}
-                    </select>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Design</label>
+                    <div className="px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 truncate">
+                      {designs.find(d => d.id === item.designId)?.name || <span className="text-gray-400">—</span>}
+                    </div>
                   </div>
 
+                  {/* Fit/Gender — only shown when product has multiple options */}
+                  {selectedFitOptions.length > 1 && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Fit / Gender *</label>
+                      <select
+                        value={item.fit}
+                        onChange={(e) => updateItem(item.id, "fit", e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+                      >
+                        <option value="">Select fit...</option>
+                        {selectedFitOptions.map(f => (
+                          <option key={f} value={f}>{f.charAt(0).toUpperCase() + f.slice(1)}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      Size
-                    </label>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Size</label>
                     <select
                       value={item.sizeId}
                       onChange={(e) =>
@@ -521,11 +558,11 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
             type="submit"
             disabled={submitting}
             onClick={() => setShowErrors(true)}
-            className={`px-12 py-4 rounded-xl transition-colors font-bold text-xl shadow-lg hover:shadow-xl ${
+            className={`px-12 py-4 rounded-2xl transition-colors font-semibold text-base shadow-sm ${
               !step1Complete || !step2Complete || !step3Complete || !step4Complete
-                ? "bg-blue-400 text-white hover:bg-blue-500"
-                : "bg-blue-600 text-white hover:bg-blue-700"
-            } disabled:bg-gray-300 disabled:cursor-not-allowed`}
+                ? "bg-gray-300 text-gray-500 cursor-default"
+                : "bg-gray-900 text-white hover:bg-gray-700"
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             {submitting ? "Placing Order..." : "✓ Place Order"}
           </button>
@@ -535,32 +572,10 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
           <button
             type="button"
             onClick={clearForm}
-            className="mt-2 px-8 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-black font-medium text-lg border border-gray-300 transition-colors"
+            className="mt-2 px-8 py-3 rounded-2xl bg-white hover:bg-gray-50 text-gray-500 font-medium text-sm border border-gray-200 transition-colors"
           >
             Clear Form
           </button>
-        </div>
-
-        {/* Pricing Reference */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">
-            Pricing Reference
-          </h3>
-          <p className="text-sm text-gray-500 mb-4">
-            Prices depend on total team quantity per product type. The more
-            riders that order, the better the price!
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {productTypes.map((pt) => (
-              <PricingTable
-                key={pt.id}
-                productTypeId={pt.id}
-                productName={pt.name}
-                productUrl={PRODUCT_URLS[pt.id]}
-                tiers={PRICING[pt.id] || []}
-              />
-            ))}
-          </div>
         </div>
       </form>
     </div>

@@ -14,6 +14,7 @@ interface OrderItem {
   product_type_id: string;
   design_id: string;
   size_id: string;
+  sleeve_length?: string | null;
   product_name: string;
   design_name: string;
   size_name: string;
@@ -36,6 +37,7 @@ interface EditState {
   productTypeId: string;
   designId: string;
   sizeId: string;
+  sleeveLength: string;
   quantity: number;
 }
 
@@ -90,6 +92,7 @@ export default function MyOrdersPage() {
       productTypeId: item.product_type_id,
       designId: item.design_id,
       sizeId: item.size_id,
+      sleeveLength: item.sleeve_length || "",
       quantity: item.quantity,
     });
   }, [fetchCatalog]);
@@ -110,6 +113,7 @@ export default function MyOrdersPage() {
           productTypeId: editState.productTypeId,
           designId: editState.designId,
           sizeId: editState.sizeId,
+          sleeveLength: editState.sleeveLength || null,
           quantity: editState.quantity,
         }),
       });
@@ -145,7 +149,7 @@ export default function MyOrdersPage() {
   }, [fetchOrders]);
 
   return (
-    <PasswordGate password="thinkmtb-go" storageKey="auth-main" title="My Orders">
+    <PasswordGate password={["thinkmtb-go", "thinkmtb123"]} storageKey="auth-main" title="My Orders" checkOrderingStatus={true}>
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
@@ -171,8 +175,38 @@ export default function MyOrdersPage() {
               </p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {orders.map((order) => {
+            (() => {
+              // Group orders by person (case-insensitive), sorted alphabetically
+              const grouped = new Map<string, { displayName: string; orders: OrderResult[] }>();
+              for (const order of orders) {
+                const key = order.user_name.toLowerCase().trim();
+                if (!grouped.has(key)) {
+                  grouped.set(key, { displayName: order.user_name, orders: [] });
+                }
+                grouped.get(key)!.orders.push(order);
+              }
+              const sortedGroups = Array.from(grouped.values()).sort((a, b) =>
+                a.displayName.localeCompare(b.displayName)
+              );
+              // Sort each person's orders by order_number
+              for (const group of sortedGroups) {
+                group.orders.sort((a, b) =>
+                  (a.order_number || "").localeCompare(b.order_number || "", undefined, { numeric: true })
+                );
+              }
+
+              return (
+                <div className="space-y-6">
+                  {sortedGroups.map((group) => (
+                    <div key={group.displayName}>
+                      <h2 className="text-base font-semibold text-white mb-2 px-1">
+                        {group.displayName}
+                        <span className="ml-2 text-xs font-normal text-gray-300">
+                          {group.orders.length} order{group.orders.length !== 1 ? "s" : ""}
+                        </span>
+                      </h2>
+                      <div className="space-y-2">
+                        {group.orders.map((order) => {
                 const isExpanded = expandedId === order.id;
                 const totalQty = order.items.reduce((s, i) => s + i.quantity, 0);
                 return (
@@ -190,9 +224,10 @@ export default function MyOrdersPage() {
                         <span className="text-lg">{isExpanded ? "▼" : "▶"}</span>
                         <div>
                           <p className="font-semibold text-black">
-                            {order.user_name}                            {order.order_number && (
-                              <span className="ml-2 text-xs font-mono text-gray-500">{order.order_number}</span>
-                            )}                          </p>
+                            {order.order_number && (
+                              <span className="font-mono text-gray-700">{order.order_number}</span>
+                            )}
+                          </p>
                           <p className="text-sm text-black">
                             {new Date(order.created_at).toLocaleDateString("en-US", {
                               year: "numeric",
@@ -225,7 +260,7 @@ export default function MyOrdersPage() {
                                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
                                       <select
                                         value={editState.productTypeId}
-                                        onChange={(e) => setEditState({ ...editState, productTypeId: e.target.value })}
+                                        onChange={(e) => setEditState({ ...editState, productTypeId: e.target.value, sleeveLength: "" })}
                                         className="border border-gray-300 rounded px-2 py-1 text-black"
                                       >
                                         {productTypes.map((pt) => (
@@ -258,6 +293,20 @@ export default function MyOrdersPage() {
                                         className="border border-gray-300 rounded px-2 py-1 text-black w-20"
                                       />
                                     </div>
+                                    {editState.productTypeId === "enduro-jersey" && (
+                                      <div>
+                                        <label className="block text-xs text-gray-600 mb-1">Sleeve Length *</label>
+                                        <select
+                                          value={editState.sleeveLength}
+                                          onChange={(e) => setEditState({ ...editState, sleeveLength: e.target.value })}
+                                          className="border border-gray-300 rounded px-2 py-1 text-black text-sm"
+                                        >
+                                          <option value="">Select sleeve...</option>
+                                          <option value="short">Short Sleeve</option>
+                                          <option value="long">Long Sleeve</option>
+                                        </select>
+                                      </div>
+                                    )}
                                     <div className="flex items-center gap-2">
                                       <button
                                         onClick={() => saveEdit(item.id)}
@@ -279,7 +328,14 @@ export default function MyOrdersPage() {
                                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 flex-1 text-sm text-black">
                                       <span>{item.product_name}</span>
                                       <span>{item.design_name}</span>
-                                      <span>{item.size_name}</span>
+                                      <span>
+                                        {item.size_name}
+                                        {item.sleeve_length && (
+                                          <span className="ml-1 text-xs text-gray-500">
+                                            ({item.sleeve_length.charAt(0).toUpperCase() + item.sleeve_length.slice(1)} Sleeve)
+                                          </span>
+                                        )}
+                                      </span>
                                       <span className="font-medium">Qty: {item.quantity}</span>
                                     </div>
                                     <div className="flex items-center space-x-2 sm:ml-4 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
@@ -320,7 +376,12 @@ export default function MyOrdersPage() {
                   </div>
                 );
               })}
-            </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()
           )}
         </div>
       )}

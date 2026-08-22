@@ -38,6 +38,14 @@ export async function PATCH(
       updates.push("quantity = ?");
       values.push(body.quantity);
     }
+    if ("sleeveLength" in body) {
+      updates.push("sleeve_length = ?");
+      values.push(body.sleeveLength || null);
+    }
+    if ("fit" in body) {
+      updates.push("fit = ?");
+      values.push(body.fit || null);
+    }
 
     if (updates.length === 0) {
       return NextResponse.json({ error: "No fields to update" }, { status: 400 });

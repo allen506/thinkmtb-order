@@ -8,33 +8,60 @@ interface DesignSelectorProps {
   designs: Design[];
   selectedDesignId: string;
   onSelect: (designId: string) => void;
+  productCategory?: string;
 }
 
 export default function DesignSelector({
   designs,
   selectedDesignId,
   onSelect,
+  productCategory,
 }: DesignSelectorProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+  // Filter designs by category if productCategory is provided
+  const filteredDesigns = productCategory
+    ? designs.filter((design) => {
+        try {
+          const designedFor = JSON.parse(design.designed_for || "[]");
+          if (Array.isArray(designedFor)) {
+            return designedFor.includes(productCategory);
+          }
+        } catch {
+          // If designed_for is not valid JSON (old designs), show all
+          return true;
+        }
+        return false;
+      })
+    : designs;
 
   return (
     <div>
       <h3 className="text-lg font-semibold mb-3 text-gray-800">
-        Step 2 — Select Your Design
+        Step 3 — Select Your Design
       </h3>
+      {!productCategory ? (
+        <p className="text-gray-400 text-sm py-2">Select a product first to see available designs.</p>
+      ) : (
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {designs.map((design) => (
+        {filteredDesigns.length === 0 ? (
+          <p className="col-span-full text-gray-500 text-sm py-4">
+            No designs available for this product type
+          </p>
+        ) : (
+          filteredDesigns.map((design) => (
           <button
             key={design.id}
+            type="button"
             onClick={() => onSelect(design.id)}
             onMouseEnter={() => setHoveredId(design.id)}
             onMouseLeave={() => setHoveredId(null)}
-            className={`relative rounded-xl overflow-hidden border-3 transition-all duration-200 ${
+            className={`relative rounded-2xl overflow-hidden transition-all duration-200 border-2 ${
               selectedDesignId === design.id
-                ? "border-blue-500 ring-4 ring-blue-200 shadow-lg scale-[1.02]"
+                ? "border-blue-500 ring-4 ring-blue-100 shadow-md"
                 : hoveredId === design.id
-                ? "border-gray-300 shadow-md scale-[1.01]"
-                : "border-gray-200 shadow-sm"
+                ? "border-gray-200 shadow-md"
+                : "border-transparent shadow-sm bg-white"
             }`}
           >
             <div className="aspect-[16/9] bg-gradient-to-br from-gray-100 to-gray-200 relative">
@@ -74,8 +101,10 @@ export default function DesignSelector({
               )}
             </div>
           </button>
-        ))}
+        ))
+        )}
       </div>
+      )}
     </div>
   );
 }
