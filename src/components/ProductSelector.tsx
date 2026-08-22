@@ -71,7 +71,7 @@ export default function ProductSelector({
 
   return (
     <div>
-      <h3 className="text-lg font-semibold mb-4 text-gray-800">
+      <h3 className="text-2xl sm:text-3xl font-bold mb-6 sm:mb-8 text-gray-800">
         Step 2 — Select Your Product
       </h3>
       <div className="space-y-6">

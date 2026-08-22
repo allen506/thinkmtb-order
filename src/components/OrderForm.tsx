@@ -307,7 +307,7 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Step 1 — Your Name */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <h3 className="text-base font-semibold mb-4 text-gray-900">Step 1 — Your Name</h3>
+          <h3 className="text-2xl sm:text-3xl font-bold mb-5 sm:mb-6 text-gray-900">Step 1 — Your Name</h3>
           {lockedName ? (
             <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 max-w-md">
               <span className="text-blue-900 font-medium">{firstName} {lastName}</span>
@@ -382,8 +382,8 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
         <div className={`bg-white rounded-2xl border shadow-sm p-6 transition-colors ${
           showErrors && !step4Complete ? "border-red-300 ring-2 ring-red-50" : "border-gray-100"
         }`}>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-            <h3 className="text-base font-semibold text-gray-900">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6">
+            <h3 className="text-2xl sm:text-3xl font-bold text-gray-900">
               Step 4 — Order Details
               {showErrors && !step4Complete && (
                 <span className="text-red-400 text-sm font-normal ml-2">— Please complete all fields</span>
