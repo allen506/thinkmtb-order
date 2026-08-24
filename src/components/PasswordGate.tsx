@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useIdleTimeout } from "@/lib/useIdleTimeout";
+import SessionWarningModal from "./SessionWarningModal";
 
 interface PasswordGateProps {
   password: string | string[];
@@ -26,8 +28,34 @@ export default function PasswordGate({
   const [checking, setChecking] = useState(true);
   const [verifying, setVerifying] = useState(false);
   const [orderingActive, setOrderingActive] = useState(true);
+  const [sessionTimeoutMinutes, setSessionTimeoutMinutes] = useState(15);
+  const [loadingTimeout, setLoadingTimeout] = useState(true);
 
   const validPasswords = Array.isArray(password) ? password : [password];
+
+  // Fetch session timeout setting
+  useEffect(() => {
+    fetch("/api/app-settings")
+      .then((res) => res.json())
+      .then((data) => {
+        const timeout = parseInt(data.session_timeout_minutes || "15", 10);
+        setSessionTimeoutMinutes(timeout);
+        setLoadingTimeout(false);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch session timeout:", err);
+        setLoadingTimeout(false);
+      });
+  }, []);
+
+  // Idle timeout hook (only active when authenticated)
+  const { showWarning, timeRemaining, dismissWarning } = useIdleTimeout({
+    timeoutMinutes: sessionTimeoutMinutes,
+    warningMinutes: 2, // Show warning 2 minutes before logout
+    onLogout: () => {
+      handleLogout();
+    },
+  });
 
   useEffect(() => {
     // Fetch ordering status
@@ -108,6 +136,17 @@ export default function PasswordGate({
     }
   };
 
+  const handleLogout = () => {
+    try {
+      sessionStorage.removeItem(storageKey);
+      localStorage.removeItem(storageKey);
+    } catch {}
+    setAuthenticated(false);
+    
+    // Dispatch custom event for NavBar to detect auth change
+    window.dispatchEvent(new Event("auth-changed"));
+  };
+
   if (checking) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -144,19 +183,14 @@ export default function PasswordGate({
   }
 
   if (authenticated) {
-    const handleLogout = () => {
-      try {
-        sessionStorage.removeItem(storageKey);
-        localStorage.removeItem(storageKey);
-      } catch {}
-      setAuthenticated(false);
-      
-      // Dispatch custom event for NavBar to detect auth change
-      window.dispatchEvent(new Event("auth-changed"));
-    };
-
     return (
       <div>
+        <SessionWarningModal
+          isOpen={showWarning}
+          timeRemaining={timeRemaining}
+          onStayLoggedIn={dismissWarning}
+          onLogout={handleLogout}
+        />
         {children}
       </div>
     );

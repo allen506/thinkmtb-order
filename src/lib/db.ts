@@ -175,6 +175,7 @@ function initializeDb(db: Database.Database) {
   db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payment_paypal', '')`).run();
   db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payment_cash', 'Pay in person at the event or contact an admin.')`).run();
   db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('archive_retention_days', '365')`).run();
+  db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('session_timeout_minutes', '15')`).run();
 
   // Add sleeve_length column to order_items if it doesn't exist
   const itemCols = (db.prepare(`PRAGMA table_info(order_items)`).all() as { name: string }[]).map(c => c.name);
