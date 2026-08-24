@@ -29,10 +29,19 @@ export default function UserPricingPage() {
   const [catalog, setCatalog] = useState<CatalogData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
+  const [teamQty, setTeamQty] = useState<Record<string, number>>({});
 
   useEffect(() => {
     fetchCatalog();
+    fetchTeamQuantities();
   }, []);
+
+  const fetchTeamQuantities = () => {
+    fetch("/api/orders/team-quantities")
+      .then((res) => res.json())
+      .then((data) => setTeamQty(data || {}))
+      .catch(() => {});
+  };
 
   const fetchCatalog = () => {
     fetch("/api/catalog")
@@ -93,12 +102,12 @@ export default function UserPricingPage() {
                 <div className="space-y-5">
                   {categories.map(cat => (
                     <div key={cat}>
-                      <div className="flex items-center gap-2 mb-3">
-                        <span className="text-base">{CATEGORY_ICONS[cat] || "📦"}</span>
-                        <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
+                      <div className="flex items-center gap-2 mb-4">
+                        <span className="text-2xl">{CATEGORY_ICONS[cat] || "📦"}</span>
+                        <h4 className="text-base sm:text-lg font-bold text-gray-900 uppercase tracking-wider">
                           {CATEGORY_LABELS[cat] || cat.charAt(0).toUpperCase() + cat.slice(1)}
                         </h4>
-                        <div className="flex-1 h-px bg-gray-200" />
+                        <div className="flex-1 h-px bg-gray-300" />
                       </div>
                       <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
                         {grouped[cat].map((product) => (
@@ -137,12 +146,20 @@ export default function UserPricingPage() {
             {selectedProductData && (
               <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
                 <div className="bg-gradient-to-r from-amber-600 to-amber-700 px-6 py-4">
-                  <h2 className="text-xl font-bold text-white">
-                    {selectedProductData.name}
-                  </h2>
-                  <p className="text-amber-100 text-sm mt-1">
-                    {selectedProductData.description}
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-xl font-bold text-white">
+                        {selectedProductData.name}
+                      </h2>
+                      <p className="text-amber-100 text-sm mt-1">
+                        {selectedProductData.description}
+                      </p>
+                    </div>
+                  <div className="bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2 text-right">
+                      <p className="text-amber-100 text-xs font-semibold">ORDERS IN QUEUE</p>
+                      <p className="text-white text-2xl font-bold">{selectedProduct ? (teamQty[selectedProduct] || 0) : 0}</p>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -162,19 +179,36 @@ export default function UserPricingPage() {
                           </td>
                         </tr>
                       ) : (
-                        getProductTiers().map((tier, idx) => (
-                          <tr key={tier.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                            <td className="px-6 py-3 text-gray-900 font-medium">
-                              {tier.min_qty} - {tier.max_qty ? tier.max_qty : "∞"}
-                            </td>
-                            <td className="px-6 py-3 text-right text-gray-900 font-medium">
-                              ₡{tier.price_crc.toLocaleString("es-CR")}
-                            </td>
-                            <td className="px-6 py-3 text-right font-bold text-green-700">
-                              ${tier.price_usd.toFixed(2)}
-                            </td>
-                          </tr>
-                        ))
+                        getProductTiers().map((tier, idx) => {
+                          const currentQty = selectedProduct ? (teamQty[selectedProduct] || 0) : 0;
+                          const isCurrentTier = currentQty >= tier.min_qty && currentQty <= (tier.max_qty || Number.MAX_SAFE_INTEGER);
+                          return (
+                            <tr key={tier.id} className={`${
+                              isCurrentTier 
+                                ? "bg-amber-50 border-l-4 border-l-amber-600" 
+                                : idx % 2 === 0 
+                                  ? "bg-white" 
+                                  : "bg-gray-50"
+                            }`}>
+                              <td className={`px-6 py-3 font-medium ${isCurrentTier ? "text-amber-900" : "text-gray-900"}`}>
+                                <div className="flex items-center gap-2">
+                                  {tier.min_qty} - {tier.max_qty ? tier.max_qty : "∞"}
+                                  {isCurrentTier && (
+                                    <span className="inline-flex items-center gap-1 bg-amber-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-full">
+                                      ✓ CURRENT
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className={`px-6 py-3 text-right font-medium ${isCurrentTier ? "text-amber-900 font-bold text-lg" : "text-gray-900"}`}>
+                                ₡{tier.price_crc.toLocaleString("es-CR")}
+                              </td>
+                              <td className={`px-6 py-3 text-right font-bold ${isCurrentTier ? "text-amber-700 text-lg" : "text-green-700"}`}>
+                                ${tier.price_usd.toFixed(2)}
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>

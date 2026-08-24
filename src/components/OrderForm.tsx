@@ -358,6 +358,40 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
           />
         </div>
 
+        {/* Current Price Display */}
+        {items[0]?.productTypeId && (() => {
+          const productTypeId = items[0].productTypeId;
+          const currentTeamQty = teamQty[productTypeId] || 0;
+          const currentPrice = getItemPrice(productTypeId, 1);
+          const selectedProductName = productTypes.find(p => p.id === productTypeId)?.name;
+          
+          if (!currentPrice) return null;
+          
+          return (
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl border-2 border-amber-400 p-6 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-1">CURRENT PRICE — {selectedProductName}</p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl sm:text-4xl font-bold text-gray-900">
+                      ${currentPrice.unitUSD.toFixed(2)}
+                    </span>
+                    <span className="text-sm text-gray-600">per unit</span>
+                    <span className="text-xs text-gray-500">
+                      ₡{currentPrice.unitCRC.toLocaleString("es-CR")}
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-amber-700 font-medium mb-1">📦 ORDERS IN QUEUE</p>
+                  <p className="text-2xl font-bold text-amber-900">{currentTeamQty}</p>
+                  <p className="text-xs text-amber-600 mt-1">Pricing for this tier</p>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Step 3 — Design Selection (filtered by selected product) */}
         <div className={`bg-white rounded-2xl border shadow-sm p-6 transition-colors ${
           showErrors && !step3Complete ? "border-red-300 ring-2 ring-red-50" : "border-gray-100"
