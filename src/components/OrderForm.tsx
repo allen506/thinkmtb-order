@@ -135,9 +135,21 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
   };
 
   const setProductForAll = useCallback((productTypeId: string) => {
-    setItems((prev) =>
-      prev.map((item) => ({ ...item, productTypeId, fit: "" }))
-    );
+    setItems((prev) => {
+      // If no items exist yet, create a placeholder to track product selection
+      if (prev.length === 0) {
+        return [{
+          id: generateId(),
+          productTypeId,
+          designId: "",
+          sizeId: "",
+          fit: "",
+          quantity: 1,
+        }];
+      }
+      // Otherwise update all existing items
+      return prev.map((item) => ({ ...item, productTypeId, fit: "" }));
+    });
     setSelectedDesigns([]);
   }, []);
 
