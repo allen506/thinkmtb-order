@@ -44,24 +44,13 @@ export default function DesignSelector({
     if (existing) {
       onSelectDesigns(selectedDesigns.filter((s) => s.designId !== designId));
     } else {
+      // Always start with quantity 1, can be adjusted in Step 4
       onSelectDesigns([...selectedDesigns, { designId, quantity: 1 }]);
-    }
-  };
-
-  const updateQuantity = (designId: string, quantity: number) => {
-    if (quantity > 0) {
-      onSelectDesigns(
-        selectedDesigns.map((s) =>
-          s.designId === designId ? { ...s, quantity } : s
-        )
-      );
     }
   };
 
   const isSelected = (designId: string) =>
     selectedDesigns.some((s) => s.designId === designId);
-  const getQuantity = (designId: string) =>
-    selectedDesigns.find((s) => s.designId === designId)?.quantity || 1;
 
   return (
     <div>
@@ -69,7 +58,7 @@ export default function DesignSelector({
         Step 3 — Select Your Designs
       </h3>
       <p className="text-sm text-gray-500 mb-4">
-        You can select multiple designs and specify quantities for each
+        Click to select multiple designs. You&apos;ll set quantities in the next step.
       </p>
       {!productCategory ? (
         <p className="text-gray-400 text-sm py-2">Select a product first to see available designs.</p>
@@ -82,78 +71,58 @@ export default function DesignSelector({
           ) : (
             filteredDesigns.map((design) => {
               const selected = isSelected(design.id);
-              const qty = getQuantity(design.id);
               return (
-                <div
+                <button
                   key={design.id}
-                  className="flex flex-col"
+                  type="button"
+                  onClick={() => toggleDesign(design.id)}
+                  onMouseEnter={() => setHoveredId(design.id)}
+                  onMouseLeave={() => setHoveredId(null)}
+                  className={`relative rounded-2xl overflow-hidden transition-all duration-200 border-2 ${
+                    selected
+                      ? "border-blue-500 ring-4 ring-blue-100 shadow-md"
+                      : hoveredId === design.id
+                      ? "border-gray-200 shadow-md"
+                      : "border-transparent shadow-sm bg-white"
+                  }`}
                 >
-                  <button
-                    type="button"
-                    onClick={() => toggleDesign(design.id)}
-                    onMouseEnter={() => setHoveredId(design.id)}
-                    onMouseLeave={() => setHoveredId(null)}
-                    className={`relative rounded-2xl overflow-hidden transition-all duration-200 border-2 flex-1 ${
-                      selected
-                        ? "border-blue-500 ring-4 ring-blue-100 shadow-md"
-                        : hoveredId === design.id
-                        ? "border-gray-200 shadow-md"
-                        : "border-transparent shadow-sm bg-white"
-                    }`}
-                  >
-                    <div className="aspect-[16/9] bg-gradient-to-br from-gray-100 to-gray-200 relative">
-                      <Image
-                        src={design.image_url}
-                        alt={design.name}
-                        fill
-                        className="object-cover"
-                        sizes="(max-width: 768px) 50vw, 25vw"
-                      />
-                      {selected && (
-                        <div className="absolute top-2 right-2 bg-blue-500 text-white rounded-full w-7 h-7 flex items-center justify-center">
-                          <svg
-                            className="w-4 h-4"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={3}
-                              d="M5 13l4 4L19 7"
-                            />
-                          </svg>
-                        </div>
-                      )}
-                    </div>
-                    <div className="p-3 bg-white">
-                      <p className="font-semibold text-sm text-gray-800">
-                        {design.name}
+                  <div className="aspect-[16/9] bg-gradient-to-br from-gray-100 to-gray-200 relative">
+                    <Image
+                      src={design.image_url}
+                      alt={design.name}
+                      fill
+                      className="object-cover"
+                      sizes="(max-width: 768px) 50vw, 25vw"
+                    />
+                    {selected && (
+                      <div className="absolute top-2 right-2 bg-blue-500 text-white rounded-full w-7 h-7 flex items-center justify-center">
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={3}
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-3 bg-white">
+                    <p className="font-semibold text-sm text-gray-800">
+                      {design.name}
+                    </p>
+                    {design.description && (
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {design.description}
                       </p>
-                      {design.description && (
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {design.description}
-                        </p>
-                      )}
-                    </div>
-                  </button>
-                  {selected && (
-                    <div className="mt-2 flex items-center gap-2 bg-blue-50 p-2 rounded-lg">
-                      <label className="text-xs font-medium text-gray-700">Qty:</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="999"
-                        value={qty}
-                        onChange={(e) =>
-                          updateQuantity(design.id, parseInt(e.target.value) || 1)
-                        }
-                        className="w-12 px-2 py-1 rounded border border-blue-300 text-sm text-center font-medium focus:ring-2 focus:ring-blue-500 outline-none"
-                      />
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                </button>
               );
             })
           )}
