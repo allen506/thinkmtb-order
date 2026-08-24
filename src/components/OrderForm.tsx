@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import DesignSelector from "@/components/DesignSelector";
+import DesignSelector, { type DesignSelection } from "@/components/DesignSelector";
 import ProductSelector from "@/components/ProductSelector";
 import { Design, ProductType, Size } from "@/lib/types";
 import { getUnitPriceCRC } from "@/lib/pricing";
@@ -33,20 +33,16 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
   const [showErrors, setShowErrors] = useState(false);
+
+  // Multi-design selection state
+  const [selectedDesigns, setSelectedDesigns] = useState<DesignSelection[]>([]);
+
   // Reset form to initial state
   const clearForm = () => {
     setFirstName("");
     setLastName("");
-    setItems([
-      {
-        id: generateId(),
-        productTypeId: "",
-        designId: "",
-        sizeId: "",
-        fit: "",
-        quantity: 1,
-      },
-    ]);
+    setItems([]);
+    setSelectedDesigns([]);
     setShowErrors(false);
     setError("");
     setSuccess(false);
@@ -61,16 +57,7 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [lockedName, setLockedName] = useState(false);
-  const [items, setItems] = useState<OrderItem[]>([
-    {
-      id: generateId(),
-      productTypeId: "",
-      designId: "",
-      sizeId: "",
-      fit: "",
-      quantity: 1,
-    },
-  ]);
+  const [items, setItems] = useState<OrderItem[]>([]);
 
   useEffect(() => {
     // Load saved identity so name is always consistent across devices
@@ -111,23 +98,31 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
       .catch(() => {});
   }, []);
 
-  const addItem = () => {
-    setItems([
-      ...items,
-      {
-        id: generateId(),
-        productTypeId: items[0]?.productTypeId || "",
-        designId: items[0]?.designId || "",
-        sizeId: "",
-        fit: "",
-        quantity: 1,
-      },
-    ]);
-  };
+  // When designs are selected, create items for each design with their quantities
+  const handleDesignsSelected = useCallback((selections: DesignSelection[]) => {
+    setSelectedDesigns(selections);
+    // Create items for each selected design
+    const newItems = selections.map((selection) => ({
+      id: generateId(),
+      productTypeId: items[0]?.productTypeId || "",
+      designId: selection.designId,
+      sizeId: "",
+      fit: "",
+      quantity: selection.quantity,
+    }));
+    setItems(newItems);
+  }, [items]);
 
   const removeItem = (id: string) => {
     if (items.length > 1) {
-      setItems(items.filter((item) => item.id !== id));
+      const updatedItems = items.filter((item) => item.id !== id);
+      setItems(updatedItems);
+      // Update selectedDesigns to match
+      const updatedSelections = updatedItems.map(item => ({
+        designId: item.designId,
+        quantity: item.quantity,
+      }));
+      setSelectedDesigns(updatedSelections);
     }
   };
 
@@ -139,16 +134,11 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
     );
   };
 
-  const setDesignForAll = useCallback((designId: string) => {
-    setItems((prev) =>
-      prev.map((item) => ({ ...item, designId }))
-    );
-  }, []);
-
   const setProductForAll = useCallback((productTypeId: string) => {
     setItems((prev) =>
       prev.map((item) => ({ ...item, productTypeId, fit: "" }))
     );
+    setSelectedDesigns([]);
   }, []);
 
   // Get fit options for selected product
@@ -169,10 +159,12 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
 
     // Validate all steps
     const nameOk = !!firstName.trim() && !!lastName.trim();
-    const designOk = !!items[0]?.designId;
-    const productOk = !!items[0]?.productTypeId;
+    const productOk = items.length > 0 && !!items[0]?.productTypeId;
+    const designOk = items.length > 0 && items.every(i => !!i.designId);
     const detailsOk = items.every(
-      (item) => item.productTypeId && item.designId && item.sizeId && item.quantity > 0        && (selectedFitOptions.length <= 1 || !!item.fit)    );
+      (item) => item.productTypeId && item.designId && item.sizeId && item.quantity > 0
+        && (selectedFitOptions.length <= 1 || !!item.fit)
+    );
     if (!nameOk || !designOk || !productOk || !detailsOk) return;
 
     setSubmitting(true);
@@ -204,16 +196,7 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
       // Store user's name for My Orders page
       localStorage.setItem("thinkmtb-user-name", `${firstName} ${lastName}`.trim());
       // Reset form
-      setItems([
-        {
-          id: generateId(),
-          productTypeId: "",
-          designId: "",
-          sizeId: "",
-          fit: "",
-          quantity: 1,
-        },
-      ]);
+      clearForm();
       onOrderPlaced?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to place order");
@@ -268,9 +251,9 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
 
   // Per-step validation
   const step1Complete = !!firstName.trim() && !!lastName.trim();
-  const step2Complete = !!items[0]?.productTypeId;
-  const step3Complete = !!items[0]?.designId;
-  const step4Complete = allItemsValid && items.every(i => i.sizeId);
+  const step2Complete = items.length > 0 && !!items[0]?.productTypeId;
+  const step3Complete = selectedDesigns.length > 0;
+  const step4Complete = items.length > 0 && allItemsValid && items.every(i => i.sizeId);
 
   // Calculate per-item prices based on team volume + user's own items
   const getItemPrice = (productTypeId: string, qty: number) => {
@@ -359,7 +342,7 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
           <ProductSelector
             productTypes={productTypes}
             selectedProductId={items[0]?.productTypeId || ""}
-            onSelect={(id) => { setProductForAll(id); setDesignForAll(""); }}
+            onSelect={(id) => { setProductForAll(id); setSelectedDesigns([]); }}
           />
         </div>
 
@@ -368,158 +351,129 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
           showErrors && !step3Complete ? "border-red-300 ring-2 ring-red-50" : "border-gray-100"
         }`}>
           {showErrors && !step3Complete && (
-            <p className="text-red-500 text-sm mb-2">Please select a design</p>
+            <p className="text-red-500 text-sm mb-2">Please select at least one design</p>
           )}
           <DesignSelector
             designs={designs}
-            selectedDesignId={items[0]?.designId || ""}
-            onSelect={setDesignForAll}
+            selectedDesigns={selectedDesigns}
+            onSelectDesigns={handleDesignsSelected}
             productCategory={selectedProductCategory}
           />
         </div>
 
-        {/* Step 4 — Order Details */}
+        {/* Step 4 — Order Details (customize each design's size/fit) */}
+        {items.length > 0 && (
         <div className={`bg-white rounded-2xl border shadow-sm p-6 transition-colors ${
           showErrors && !step4Complete ? "border-red-300 ring-2 ring-red-50" : "border-gray-100"
         }`}>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6">
+          <div className="mb-6">
             <h3 className="text-2xl sm:text-3xl font-bold text-gray-900">
-              Step 4 — Order Details
+              Step 4 — Customize Each Item
               {showErrors && !step4Complete && (
                 <span className="text-red-400 text-sm font-normal ml-2">— Please complete all fields</span>
               )}
             </h3>
-            <button
-              type="button"
-              onClick={addItem}
-              className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center space-x-1 transition-colors"
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
-              <span>Add Another Item</span>
-            </button>
+            <p className="text-sm text-gray-500 mt-2">Set the size and fit for each design. You can adjust quantities if needed.</p>
           </div>
 
           <div className="space-y-4">
-            {items.map((item, index) => (
-              <div
-                key={item.id}
-                className="border border-gray-200 rounded-lg p-4 bg-gray-50"
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-medium text-gray-600">
-                    Item {index + 1}
-                  </span>
-                  {items.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeItem(item.id)}
-                      className="text-red-500 hover:text-red-700 text-sm transition-colors"
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Product</label>
-                    <div className="px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 truncate">
-                      {productTypes.find(p => p.id === item.productTypeId)?.name || <span className="text-gray-400">—</span>}
-                    </div>
+            {items.map((item, index) => {
+              const designName = designs.find(d => d.id === item.designId)?.name;
+              return (
+                <div
+                  key={item.id}
+                  className="border border-gray-200 rounded-lg p-4 bg-gray-50"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-medium text-gray-600">
+                      {designName || `Item ${index + 1}`}
+                    </span>
+                    {items.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeItem(item.id)}
+                        className="text-red-500 hover:text-red-700 text-sm transition-colors"
+                      >
+                        Remove
+                      </button>
+                    )}
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Design</label>
-                    <div className="px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 truncate">
-                      {designs.find(d => d.id === item.designId)?.name || <span className="text-gray-400">—</span>}
-                    </div>
-                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                    {/* Fit/Gender — only shown when product has multiple options */}
+                    {selectedFitOptions.length > 1 && (
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Fit / Gender *</label>
+                        <select
+                          value={item.fit}
+                          onChange={(e) => updateItem(item.id, "fit", e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+                        >
+                          <option value="">Select fit...</option>
+                          {selectedFitOptions.map(f => (
+                            <option key={f} value={f}>{f.charAt(0).toUpperCase() + f.slice(1)}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
 
-                  {/* Fit/Gender — only shown when product has multiple options */}
-                  {selectedFitOptions.length > 1 && (
                     <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">Fit / Gender *</label>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Size *</label>
                       <select
-                        value={item.fit}
-                        onChange={(e) => updateItem(item.id, "fit", e.target.value)}
+                        value={item.sizeId}
+                        onChange={(e) =>
+                          updateItem(item.id, "sizeId", e.target.value)
+                        }
                         className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
                       >
-                        <option value="">Select fit...</option>
-                        {selectedFitOptions.map(f => (
-                          <option key={f} value={f}>{f.charAt(0).toUpperCase() + f.slice(1)}</option>
+                        <option value="">Select size...</option>
+                        {sizes.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
                         ))}
                       </select>
                     </div>
-                  )}
 
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Size</label>
-                    <select
-                      value={item.sizeId}
-                      onChange={(e) =>
-                        updateItem(item.id, "sizeId", e.target.value)
-                      }
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
-                    >
-                      <option value="">Select size...</option>
-                      {sizes.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      Qty
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="50"
-                      value={item.quantity}
-                      onChange={(e) =>
-                        updateItem(
-                          item.id,
-                          "quantity",
-                          parseInt(e.target.value) || 1
-                        )
-                      }
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
-                    />
-                  </div>
-                </div>
-
-                {/* Per-item price */}
-                {item.productTypeId && (() => {
-                  const price = getItemPrice(item.productTypeId, item.quantity);
-                  if (!price) return null;
-                  return (
-                    <div className="mt-3 pt-3 border-t border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between text-sm gap-1">
-                      <span className="text-gray-500 text-xs sm:text-sm">
-                        ${price.unitUSD.toFixed(2)} × {item.quantity} · Based on {price.teamTotal} total team units
-                      </span>
-                      <span className="font-semibold text-gray-800">
-                        ${price.totalUSD.toFixed(2)}
-                      </span>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">
+                        Qty
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="50"
+                        value={item.quantity}
+                        onChange={(e) =>
+                          updateItem(
+                            item.id,
+                            "quantity",
+                            parseInt(e.target.value) || 1
+                          )
+                        }
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+                      />
                     </div>
-                  );
-                })()}
-              </div>
-            ))}
+                  </div>
+
+                  {/* Per-item price */}
+                  {item.productTypeId && (() => {
+                    const price = getItemPrice(item.productTypeId, item.quantity);
+                    if (!price) return null;
+                    return (
+                      <div className="mt-3 pt-3 border-t border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between text-sm gap-1">
+                        <span className="text-gray-500 text-xs sm:text-sm">
+                          ${price.unitUSD.toFixed(2)} × {item.quantity} · Based on {price.teamTotal} total team units
+                        </span>
+                        <span className="font-semibold text-gray-800">
+                          ${price.totalUSD.toFixed(2)}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </div>
+              );
+            })}
           </div>
 
           <div className="mt-4 p-4 bg-blue-50 rounded-lg">
@@ -545,6 +499,7 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
             </div>
           </div>
         </div>
+        )}
 
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
