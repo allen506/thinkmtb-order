@@ -145,6 +145,22 @@ function initializeDb(db: Database.Database) {
       email TEXT NOT NULL UNIQUE,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS archived_campaigns (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_name TEXT NOT NULL,
+      campaign_number INTEGER NOT NULL,
+      archived_at TEXT NOT NULL DEFAULT (datetime('now')),
+      orders_snapshot TEXT NOT NULL,
+      summary_snapshot TEXT NOT NULL,
+      total_orders INTEGER NOT NULL DEFAULT 0,
+      total_items INTEGER NOT NULL DEFAULT 0,
+      total_revenue_usd REAL NOT NULL DEFAULT 0,
+      delete_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_archived_campaigns_delete_at ON archived_campaigns(delete_at);
   `);
 
   // Ensure the sequence row exists
@@ -158,6 +174,7 @@ function initializeDb(db: Database.Database) {
   db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payment_venmo', '')`).run();
   db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payment_paypal', '')`).run();
   db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payment_cash', 'Pay in person at the event or contact an admin.')`).run();
+  db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('archive_retention_days', '365')`).run();
 
   // Add sleeve_length column to order_items if it doesn't exist
   const itemCols = (db.prepare(`PRAGMA table_info(order_items)`).all() as { name: string }[]).map(c => c.name);
