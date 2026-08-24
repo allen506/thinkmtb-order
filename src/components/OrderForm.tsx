@@ -396,8 +396,8 @@ export default function OrderForm({ onOrderPlaced }: { onOrderPlaced?: () => voi
                   key={item.id}
                   className="border border-gray-200 rounded-lg p-4 bg-gray-50"
                 >
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-sm font-medium text-gray-600">
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-base sm:text-lg font-bold text-gray-900">
                       {designName || `Item ${index + 1}`}
                     </span>
                     {items.length > 1 && (
