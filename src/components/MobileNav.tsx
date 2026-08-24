@@ -75,6 +75,13 @@ export default function MobileNav({ role }: MobileNavProps) {
                   Team Totals
                 </Link>
                 <Link
+                  href="/admin/campaign"
+                  onClick={() => setOpen(false)}
+                  className="block px-3 py-3 rounded-md text-base font-medium text-white hover:bg-gray-700 transition-colors"
+                >
+                  Campaign
+                </Link>
+                <Link
                   href="/admin/settings"
                   onClick={() => setOpen(false)}
                   className="block px-3 py-3 rounded-md text-base font-medium text-white hover:bg-gray-700 transition-colors"

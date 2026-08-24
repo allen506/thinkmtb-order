@@ -168,9 +168,6 @@ export default function AdminPage() {
   const [userTotals, setUserTotals] = useState<UserTotal[]>([]);
   const [userTotalsLoading, setUserTotalsLoading] = useState(false);
   const [markingPaid, setMarkingPaid] = useState<string | null>(null);
-  const [orderingActive, setOrderingActive] = useState(true);
-  const [togglingStatus, setTogglingStatus] = useState(false);
-  const [startingNewCampaign, setStartingNewCampaign] = useState(false);
 
   // Catalog for inline item editing
   const [catalog, setCatalog] = useState<{ productTypes: any[]; designs: any[]; sizes: any[]; productDesigns: any[] }>({ productTypes: [], designs: [], sizes: [], productDesigns: [] });
@@ -196,16 +193,6 @@ export default function AdminPage() {
     }
   }, []);
 
-  const fetchOrderingStatus = useCallback(async () => {
-    try {
-      const res = await fetch("/api/orders/status");
-      const json = await res.json();
-      setOrderingActive(json.orderingActive);
-    } catch {
-      console.error("Failed to fetch ordering status");
-    }
-  }, []);
-
   const fetchData = useCallback(async () => {
     try {
       const [summaryRes, catalogRes] = await Promise.all([
@@ -222,52 +209,6 @@ export default function AdminPage() {
       setLoading(false);
     }
   }, []);
-
-  const toggleOrderingStatus = useCallback(async () => {
-    if (orderingActive) {
-      if (!confirm("Close ordering?\n\nUsers will no longer be able to place or modify orders until you re-open it.")) return;
-    }
-    setTogglingStatus(true);
-    try {
-      const res = await fetch("/api/orders/status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderingActive: !orderingActive }),
-      });
-      const json = await res.json();
-      setOrderingActive(json.orderingActive);
-    } catch (err) {
-      console.error("Failed to toggle ordering status:", err);
-    } finally {
-      setTogglingStatus(false);
-    }
-  }, [orderingActive]);
-
-  const handleStartNewCampaign = useCallback(async () => {
-    if (!confirm("⚠️ Start a NEW order campaign?\n\nThis will:\n- DELETE all current orders\n- Reset the order counter\n- Enable ordering for the new campaign\n\nThis cannot be undone!")) {
-      return;
-    }
-    
-    setStartingNewCampaign(true);
-    try {
-      const res = await fetch("/api/orders/new-campaign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      const json = await res.json();
-      if (json.success) {
-        alert("✓ New campaign started!\nAll designs and products are ready.");
-        await Promise.all([fetchData(), fetchOrderingStatus()]);
-      } else {
-        alert("Failed to start new campaign: " + json.error);
-      }
-    } catch (err) {
-      console.error("Failed to start new campaign:", err);
-      alert("Error starting new campaign");
-    } finally {
-      setStartingNewCampaign(false);
-    }
-  }, [fetchData, fetchOrderingStatus]);
 
   const handleMarkAllPaid = useCallback(async (userName: string, orderIds: string[]) => {
     setMarkingPaid(userName);
@@ -289,8 +230,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     fetchData();
-    fetchOrderingStatus();
-  }, [fetchData, fetchOrderingStatus]);
+  }, [fetchData]);
 
   useEffect(() => {
     if (activeTab === "per-person") fetchUserTotals();
@@ -480,24 +420,6 @@ export default function AdminPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Team Totals</h1>
         <div className="flex flex-wrap gap-2">
-          <button
-            onClick={handleStartNewCampaign}
-            disabled={startingNewCampaign}
-            className="text-sm px-4 py-2 rounded-xl transition-colors font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 disabled:opacity-40"
-          >
-            {startingNewCampaign ? "Starting…" : "New Campaign"}
-          </button>
-          <button
-            onClick={toggleOrderingStatus}
-            disabled={togglingStatus}
-            className={`text-sm px-4 py-2 rounded-xl transition-colors font-medium ${
-              orderingActive
-                ? "bg-green-50 hover:bg-green-100 text-green-700 border border-green-200"
-                : "bg-red-50 hover:bg-red-100 text-red-600 border border-red-200"
-            } disabled:opacity-40`}
-          >
-            {togglingStatus ? "Updating…" : orderingActive ? "✓ Ordering Open" : "✗ Ordering Closed"}
-          </button>
           <button
             onClick={exportToExcel}
             className="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-xl transition-colors font-medium"
