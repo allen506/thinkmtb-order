@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import { Design } from "@/lib/types";
 
 export interface DesignSelection {
@@ -86,13 +85,12 @@ export default function DesignSelector({
                       : "border-transparent shadow-sm bg-white"
                   }`}
                 >
-                  <div className="aspect-[16/9] bg-gradient-to-br from-gray-100 to-gray-200 relative">
-                    <Image
+                  <div className="aspect-[16/9] bg-gradient-to-br from-gray-100 to-gray-200 relative overflow-hidden">
+                    <img
                       src={`/api/designs/${design.id}/image`}
                       alt={design.name}
-                      fill
-                      className="object-cover"
-                      sizes="(max-width: 768px) 50vw, 25vw"
+                      className="w-full h-full object-cover"
+                      loading="lazy"
                     />
                     {selected && (
                       <div className="absolute top-2 right-2 bg-blue-500 text-white rounded-full w-7 h-7 flex items-center justify-center">

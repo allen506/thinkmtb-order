@@ -120,13 +120,11 @@ function Lightbox({
         </div>
         {/* Image */}
         <div className="relative flex-1 min-h-0 bg-gray-50" style={{ minHeight: "50vh" }}>
-          <Image
+          <img
             src={`/api/designs/${design.id}/image`}
             alt={design.name}
-            fill
-            className="object-contain p-4"
-            sizes="(max-width: 1024px) 100vw, 896px"
-            priority
+            className="w-full h-full object-contain p-4"
+            loading="lazy"
           />
         </div>
         {/* Prev / Next */}
