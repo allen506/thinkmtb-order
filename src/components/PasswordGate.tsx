@@ -33,8 +33,10 @@ export default function PasswordGate({
 
   const validPasswords = Array.isArray(password) ? password : [password];
 
-  // Fetch session timeout setting
+  // Fetch session timeout setting only after authentication
   useEffect(() => {
+    if (!authenticated) return;
+    
     fetch("/api/app-settings")
       .then((res) => res.json())
       .then((data) => {
@@ -46,7 +48,7 @@ export default function PasswordGate({
         console.error("Failed to fetch session timeout:", err);
         setLoadingTimeout(false);
       });
-  }, []);
+  }, [authenticated]);
 
   // Idle timeout hook (only active when authenticated)
   const { showWarning, timeRemaining, dismissWarning } = useIdleTimeout({

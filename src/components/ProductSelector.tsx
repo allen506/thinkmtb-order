@@ -77,12 +77,12 @@ export default function ProductSelector({
       <div className="space-y-6">
         {categories.map((cat) => (
           <div key={cat}>
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-lg">{CATEGORY_ICONS[cat] || "📦"}</span>
-              <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-2xl">{CATEGORY_ICONS[cat] || "📦"}</span>
+              <h4 className="text-base sm:text-lg font-bold text-gray-900 uppercase tracking-wider">
                 {CATEGORY_LABELS[cat] || cat.charAt(0).toUpperCase() + cat.slice(1)}
               </h4>
-              <div className="flex-1 h-px bg-gray-200" />
+              <div className="flex-1 h-px bg-gray-300" />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {grouped[cat].map((pt) => (
