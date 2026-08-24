@@ -88,7 +88,7 @@ export default function DesignSelector({
                 >
                   <div className="aspect-[16/9] bg-gradient-to-br from-gray-100 to-gray-200 relative">
                     <Image
-                      src={design.image_url}
+                      src={`/api/designs/${design.id}/image`}
                       alt={design.name}
                       fill
                       className="object-cover"

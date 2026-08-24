@@ -180,7 +180,7 @@ export default function DesignManager() {
       designed_for: design.designed_for ? JSON.parse(design.designed_for) : [],
     });
     if (design.image_url) {
-      setPreviewUrl(design.image_url);
+      setPreviewUrl(`/api/designs/${design.id}/image`);
     }
     setEditingId(design.id);
     setShowForm(true);
@@ -410,7 +410,7 @@ export default function DesignManager() {
                       <div key={design.id} className="border border-gray-200 rounded-xl overflow-hidden hover:shadow-md transition bg-white">
                         {design.image_url && (
                           <div className="relative w-full h-48 bg-gray-50">
-                            <img src={design.image_url} alt={design.name} className="w-full h-full object-cover" />
+                            <img src={`/api/designs/${design.id}/image`} alt={design.name} className="w-full h-full object-cover" />
                           </div>
                         )}
                         <div className="p-4">

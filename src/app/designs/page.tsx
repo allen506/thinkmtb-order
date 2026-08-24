@@ -46,7 +46,7 @@ function DesignCard({
         aria-label={`View ${design.name} full size`}
       >
         <Image
-          src={design.image_url}
+          src={`/api/designs/${design.id}/image`}
           alt={design.name}
           fill
           className="object-contain p-2 group-hover:scale-105 transition-transform duration-200"
@@ -121,7 +121,7 @@ function Lightbox({
         {/* Image */}
         <div className="relative flex-1 min-h-0 bg-gray-50" style={{ minHeight: "50vh" }}>
           <Image
-            src={design.image_url}
+            src={`/api/designs/${design.id}/image`}
             alt={design.name}
             fill
             className="object-contain p-4"
