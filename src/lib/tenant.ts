@@ -49,7 +49,27 @@ export function getTenant(tenantId: string): Tenant | null {
  */
 export function getTenantBySlug(slug: string): Tenant | null {
   const db = getDb();
-  return db.prepare('SELECT * FROM tenants WHERE slug = ? AND status = ?').get(slug, 'active') as Tenant | undefined || null;
+  let tenant = db.prepare('SELECT * FROM tenants WHERE slug = ? AND status = ?').get(slug, 'active') as Tenant | undefined || null;
+  
+  // If this is the default tenant and it doesn't exist, create it
+  if (!tenant && slug === 'default') {
+    try {
+      console.log('📝 [getTenantBySlug] Creating missing default tenant...');
+      const defaultTenantId = 'tenant_default';
+      db.prepare(`
+        INSERT OR IGNORE INTO tenants (id, name, slug, admin_email, status)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(defaultTenantId, 'Default Tenant', 'default', 'admin@default.local', 'active');
+      console.log('✅ [getTenantBySlug] Default tenant created');
+      
+      // Try to fetch it again
+      tenant = db.prepare('SELECT * FROM tenants WHERE slug = ? AND status = ?').get(slug, 'active') as Tenant | undefined || null;
+    } catch (error) {
+      console.error('❌ [getTenantBySlug] Error creating default tenant:', error);
+    }
+  }
+  
+  return tenant;
 }
 
 /**
