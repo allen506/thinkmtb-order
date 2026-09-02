@@ -279,7 +279,7 @@ curl https://yourdomain.com
 
 ### Step 2: Access Admin Panel
 - URL: `/admin`
-- Password: `thinkmtb123` (change this!)
+- Password: Use the password configured in `.env.local` (ADMIN_PASSWORD)
 
 ### Step 3: Configure Settings
 - Set up email/SMTP

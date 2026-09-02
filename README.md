@@ -100,8 +100,9 @@ npm run dev
 
 Access at `http://localhost:3000`
 
-**Default Credentials:**
-- **Password**: `thinkmtb123`
+**Initial Setup:**
+- Login to `/admin` with the password you set in configuration
+- Change admin password in Settings on first login
 
 ### Production Deployment (Automated)
 
