@@ -23,7 +23,41 @@ export function getDb(): Database.Database {
 }
 
 function initializeDb(db: Database.Database) {
+  // Create tenant tables (multi-tenancy support)
   db.exec(`
+    CREATE TABLE IF NOT EXISTS tenants (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      admin_email TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'suspended')),
+      theme_color TEXT,
+      logo_url TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS tenant_admins (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      email TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      full_name TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'admin' CHECK(role IN ('admin', 'owner')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+      UNIQUE(tenant_id, email)
+    );
+
+    CREATE TABLE IF NOT EXISTS tenant_settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id TEXT NOT NULL,
+      key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+      UNIQUE(tenant_id, key)
+    );
+
     CREATE TABLE IF NOT EXISTS designs (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -31,7 +65,9 @@ function initializeDb(db: Database.Database) {
       image_url TEXT,
       active INTEGER NOT NULL DEFAULT 1,
       sort_order INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      tenant_id TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (tenant_id) REFERENCES tenants(id)
     );
 
     CREATE TABLE IF NOT EXISTS product_types (
@@ -42,7 +78,10 @@ function initializeDb(db: Database.Database) {
       example_url TEXT,
       active INTEGER NOT NULL DEFAULT 1,
       sort_order INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      tenant_id TEXT,
+      fit_options TEXT NOT NULL DEFAULT '["unisex"]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (tenant_id) REFERENCES tenants(id)
     );
 
     CREATE TABLE IF NOT EXISTS pricing_tiers (
@@ -52,7 +91,9 @@ function initializeDb(db: Database.Database) {
       max_qty INTEGER NOT NULL,
       price_crc REAL NOT NULL,
       price_usd REAL NOT NULL,
-      FOREIGN KEY (product_type_id) REFERENCES product_types(id)
+      tenant_id TEXT,
+      FOREIGN KEY (product_type_id) REFERENCES product_types(id),
+      FOREIGN KEY (tenant_id) REFERENCES tenants(id)
     );
 
     CREATE TABLE IF NOT EXISTS sizes (
@@ -66,8 +107,11 @@ function initializeDb(db: Database.Database) {
       user_name TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending',
       notes TEXT,
+      tenant_id TEXT,
+      order_number TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (tenant_id) REFERENCES tenants(id)
     );
 
     CREATE TABLE IF NOT EXISTS order_items (
@@ -79,10 +123,14 @@ function initializeDb(db: Database.Database) {
       quantity INTEGER NOT NULL DEFAULT 1,
       unit_price_crc REAL,
       unit_price_usd REAL,
+      sleeve_length TEXT,
+      fit TEXT,
+      tenant_id TEXT,
       FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
       FOREIGN KEY (product_type_id) REFERENCES product_types(id),
       FOREIGN KEY (design_id) REFERENCES designs(id),
-      FOREIGN KEY (size_id) REFERENCES sizes(id)
+      FOREIGN KEY (size_id) REFERENCES sizes(id),
+      FOREIGN KEY (tenant_id) REFERENCES tenants(id)
     );
 
     CREATE TABLE IF NOT EXISTS exchange_rates (
@@ -142,8 +190,11 @@ function initializeDb(db: Database.Database) {
 
     CREATE TABLE IF NOT EXISTS admin_emails (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT NOT NULL UNIQUE,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      email TEXT NOT NULL,
+      tenant_id TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+      UNIQUE(email, tenant_id)
     );
 
     CREATE TABLE IF NOT EXISTS archived_campaigns (
@@ -157,7 +208,9 @@ function initializeDb(db: Database.Database) {
       total_items INTEGER NOT NULL DEFAULT 0,
       total_revenue_usd REAL NOT NULL DEFAULT 0,
       delete_at TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      tenant_id TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (tenant_id) REFERENCES tenants(id)
     );
 
     CREATE INDEX IF NOT EXISTS idx_archived_campaigns_delete_at ON archived_campaigns(delete_at);
@@ -205,10 +258,12 @@ function initializeDb(db: Database.Database) {
       design_id TEXT NOT NULL,
       sort_order INTEGER NOT NULL DEFAULT 0,
       active INTEGER NOT NULL DEFAULT 1,
+      tenant_id TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      UNIQUE(product_type_id, design_id),
+      UNIQUE(product_type_id, design_id, tenant_id),
       FOREIGN KEY (product_type_id) REFERENCES product_types(id),
-      FOREIGN KEY (design_id) REFERENCES designs(id)
+      FOREIGN KEY (design_id) REFERENCES designs(id),
+      FOREIGN KEY (tenant_id) REFERENCES tenants(id)
     );
   `);
 
@@ -285,6 +340,46 @@ function initializeDb(db: Database.Database) {
   if (designCount.count === 0) {
     seedData(db);
   }
+
+  // Multi-tenancy migration: Create default tenant if none exists (backward compatibility)
+  const tenantCount = db.prepare("SELECT COUNT(*) as count FROM tenants").get() as { count: number };
+  if (tenantCount.count === 0) {
+    const defaultTenantId = 'tenant_default';
+    db.prepare(`
+      INSERT INTO tenants (id, name, slug, admin_email, status, created_at)
+      VALUES (?, ?, ?, ?, ?, datetime('now'))
+    `).run(defaultTenantId, 'Default Tenant', 'default', 'admin@default.local', 'active');
+
+    // Initialize default tenant settings from app_settings
+    const appSettings = db.prepare("SELECT key, value FROM app_settings").all() as { key: string; value: string }[];
+    const insertSetting = db.prepare(`
+      INSERT INTO tenant_settings (tenant_id, key, value, updated_at)
+      VALUES (?, ?, ?, datetime('now'))
+    `);
+    for (const setting of appSettings) {
+      insertSetting.run(defaultTenantId, setting.key, setting.value);
+    }
+
+    // Migrate existing data to default tenant
+    db.prepare(`UPDATE designs SET tenant_id = ? WHERE tenant_id IS NULL`).run(defaultTenantId);
+    db.prepare(`UPDATE product_types SET tenant_id = ? WHERE tenant_id IS NULL`).run(defaultTenantId);
+    db.prepare(`UPDATE pricing_tiers SET tenant_id = ? WHERE tenant_id IS NULL`).run(defaultTenantId);
+    db.prepare(`UPDATE orders SET tenant_id = ? WHERE tenant_id IS NULL`).run(defaultTenantId);
+    db.prepare(`UPDATE order_items SET tenant_id = ? WHERE tenant_id IS NULL`).run(defaultTenantId);
+    db.prepare(`UPDATE archived_campaigns SET tenant_id = ? WHERE tenant_id IS NULL`).run(defaultTenantId);
+    db.prepare(`UPDATE product_designs SET tenant_id = ? WHERE tenant_id IS NULL`).run(defaultTenantId);
+  }
+
+  // Ensure default settings in app_settings for backward compatibility
+  db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('ordering_active', '1')`).run();
+  db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('admin_password', 'ChangeThisToYourSecurePassword')`).run();
+  db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('club_name', 'ThinkMTB')`).run();
+  db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payment_zelle', '')`).run();
+  db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payment_venmo', '')`).run();
+  db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payment_paypal', '')`).run();
+  db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payment_cash', 'Pay in person at the event or contact an admin.')`).run();
+  db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('archive_retention_days', '365')`).run();
+  db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('session_timeout_minutes', '15')`).run();
 }
 
 function seedData(db: Database.Database) {
