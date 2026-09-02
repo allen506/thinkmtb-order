@@ -224,14 +224,23 @@ enable_nginx_site() {
     $SUDO ln -s "$NGINX_CONFIG" "$NGINX_ENABLED"
   fi
   
-  # Test Nginx configuration
+  # Test Nginx configuration (may fail if certs don't exist yet)
   log_info "Testing Nginx configuration..."
   if $SUDO nginx -t &>/dev/null; then
     log_success "Nginx configuration is valid"
   else
-    log_error "Nginx configuration test failed:"
-    $SUDO nginx -t
-    exit 1
+    # Certificate might not exist yet - create temp self-signed cert
+    log_warning "Certificate not found. Creating temporary self-signed certificate..."
+    $SUDO mkdir -p /etc/letsencrypt/live/$DOMAIN
+    $SUDO openssl req -x509 -newkey rsa:2048 -keyout /etc/letsencrypt/live/$DOMAIN/privkey.pem -out /etc/letsencrypt/live/$DOMAIN/fullchain.pem -days 365 -nodes -subj "/CN=$DOMAIN" &>/dev/null
+    
+    if $SUDO nginx -t &>/dev/null; then
+      log_success "Temporary certificate created. Nginx is ready."
+    else
+      log_error "Nginx configuration still invalid:"
+      $SUDO nginx -t
+      exit 1
+    fi
   fi
   
   # Reload Nginx
