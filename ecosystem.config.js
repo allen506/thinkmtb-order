@@ -2,9 +2,8 @@ module.exports = {
   apps: [
     {
       name: "thinkmtb-order",
-      script: "node_modules/.bin/next",
-      args: "start --port 3000",
-      cwd: "/Users/allen/Programming/thinkmtb-order",
+      script: "npm",
+      args: "run start",
       instances: 1,
       autorestart: true,
       watch: false,
