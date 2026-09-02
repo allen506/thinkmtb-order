@@ -1,7 +1,3 @@
-'use client';
-
-import { useHeaders } from 'next/headers';
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
 /**

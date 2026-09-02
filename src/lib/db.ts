@@ -1,20 +1,27 @@
 import Database from "better-sqlite3";
 import path from "path";
 
-const DB_PATH = path.join(process.cwd(), "data", "orders.db");
-
 let db: Database.Database | null = null;
+let DB_PATH: string | null = null;
+
+function getDbPath(): string {
+  if (!DB_PATH) {
+    DB_PATH = path.join(process.cwd(), "data", "orders.db");
+  }
+  return DB_PATH;
+}
 
 export function getDb(): Database.Database {
   if (!db) {
     // Ensure data directory exists
     const fs = require("fs");
-    const dir = path.dirname(DB_PATH);
+    const dbPath = getDbPath();
+    const dir = path.dirname(dbPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    db = new Database(DB_PATH);
+    db = new Database(dbPath);
     db.pragma("journal_mode = WAL");
     db.pragma("foreign_keys = ON");
     initializeDb(db);
