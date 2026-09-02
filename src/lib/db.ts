@@ -48,6 +48,18 @@ function initializeDb(db: Database.Database) {
       UNIQUE(tenant_id, email)
     );
 
+    CREATE TABLE IF NOT EXISTS user_accounts (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      email TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      full_name TEXT NOT NULL,
+      verified INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+      UNIQUE(tenant_id, email)
+    );
+
     CREATE TABLE IF NOT EXISTS tenant_settings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       tenant_id TEXT NOT NULL,
@@ -374,6 +386,7 @@ function initializeDb(db: Database.Database) {
   db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('ordering_active', '1')`).run();
   db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('admin_password', 'ChangeThisToYourSecurePassword')`).run();
   db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('club_name', 'ThinkMTB')`).run();
+  db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('team_password', '')`).run();
   db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payment_zelle', '')`).run();
   db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payment_venmo', '')`).run();
   db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payment_paypal', '')`).run();
