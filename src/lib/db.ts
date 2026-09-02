@@ -586,15 +586,24 @@ function seedData(db: Database.Database) {
  * Call this at app startup to initialize the database
  */
 export function initializeDatabase(): void {
+  console.log(`🔧 [initializeDatabase] Starting initialization check...`);
+  console.log(`🔧 [initializeDatabase] NODE_ENV=${process.env.NODE_ENV}, buildMode=${buildMode}`);
+  
   // Only initialize during runtime, not during build
-  if (process.env.NEXT_PHASE !== 'phase-production-build' && !buildMode) {
-    try {
-      const database = getDb();
-      // Check if initialization worked
-      const tenantCount = (database.prepare("SELECT COUNT(*) as count FROM tenants").get() as { count: number } || { count: 0 }).count;
-      console.log(`✅ Database initialized with ${tenantCount} tenant(s)`);
-    } catch (error) {
-      console.error('⚠️ Database initialization check failed:', error);
-    }
+  if (process.env.NEXT_PHASE === 'phase-production-build' || buildMode) {
+    console.log(`🔧 [initializeDatabase] Skipping - build phase detected`);
+    return;
+  }
+  
+  try {
+    console.log(`🔧 [initializeDatabase] Calling getDb()...`);
+    const database = getDb();
+    console.log(`🔧 [initializeDatabase] getDb() returned successfully`);
+    
+    // Check if initialization worked
+    const tenantCount = (database.prepare("SELECT COUNT(*) as count FROM tenants").get() as { count: number } || { count: 0 }).count;
+    console.log(`✅ Database initialized with ${tenantCount} tenant(s)`);
+  } catch (error) {
+    console.error('⚠️ [initializeDatabase] Check failed:', error);
   }
 }
