@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTenantBySlug } from '@/lib/tenant';
 
 /**
  * Extract tenant from subdomain or path
@@ -7,6 +6,9 @@ import { getTenantBySlug } from '@/lib/tenant';
  * Supports:
  * - thinkmtb.cmssportswear.us (subdomain)
  * - localhost:3000/tenant/thinkmtb (path - for local dev)
+ * 
+ * Note: Middleware runs in Edge Runtime and cannot access database.
+ * Tenant verification happens in route handlers.
  */
 export function middleware(request: NextRequest) {
   const { pathname, hostname } = request.nextUrl;
@@ -16,7 +18,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Extract tenant from subdomain or path
+  // Extract tenant from subdomain or path (no database access in Edge Runtime)
   let tenantSlug: string | null = null;
 
   // Try subdomain extraction first (production)
@@ -37,26 +39,11 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // If no tenant found and not a public route, redirect to tenant selection
-  if (!tenantSlug && !isPublicRoute(pathname)) {
-    // Store that we need tenant context
-    request.nextUrl.searchParams.set('_tenant_required', 'true');
-  }
-
-  // Verify tenant exists
+  // Add tenant to request headers for access in routes
+  // Route handlers will verify tenant exists in database
   if (tenantSlug) {
-    const tenant = getTenantBySlug(tenantSlug);
-    if (!tenant) {
-      return NextResponse.json(
-        { error: 'Tenant not found' },
-        { status: 404 }
-      );
-    }
-
-    // Add tenant to request headers for access in routes
     const requestHeaders = new Headers(request.headers);
-    requestHeaders.set('x-tenant-id', tenant.id);
-    requestHeaders.set('x-tenant-slug', tenant.slug);
+    requestHeaders.set('x-tenant-slug', tenantSlug);
 
     return NextResponse.next({
       request: {
