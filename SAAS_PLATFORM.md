@@ -380,6 +380,19 @@ POST /api/platform-admin/settings/smtp
 - Domain with wildcard DNS (*.cmssportswear.us)
 - NodeJS 18+
 - PostgreSQL or SQLite
+- **Important**: Sudo-enabled user account (NOT root)
+
+### Security First!
+
+**⚠️ CRITICAL**: This deployment uses security best practices:
+- Does NOT run as root
+- Creates dedicated application user
+- Proper file permissions
+- Firewall enabled
+- SSH key authentication
+- Fail2Ban protection
+
+For complete security details, see [SECURITY.md](SECURITY.md)
 
 ### Step-by-Step Deployment
 
@@ -406,93 +419,110 @@ git clone https://github.com/yourusername/thinkmtb-order.git
 cd thinkmtb-order
 ```
 
-#### 3. Configure Environment
+#### 3. Run the Secure Deployment Script
 
-Create `.env.local`:
-```bash
-# Application
-NODE_ENV=production
-PORT=3000
-APP_URL=https://cmssportswear.us
-
-# Database
-DATABASE_TYPE=postgresql
-DATABASE_URL=postgresql://user:password@localhost:5432/cmssportswear
-
-# Platform Admin
-PLATFORM_ADMIN_EMAIL=admin@cmssportswear.us
-PLATFORM_ADMIN_PASSWORD=YourSecurePassword123!
-
-# SMTP (for global email notifications)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USERNAME=your-email@gmail.com
-SMTP_PASSWORD=your-app-password
-SMTP_FROM_EMAIL=noreply@cmssportswear.us
-
-# Session
-SESSION_TIMEOUT_MINUTES=15
-```
-
-#### 4. Deploy Using Script
+**Important**: Do NOT run as root. Run as a sudo-enabled user.
 
 ```bash
-chmod +x scripts/deploy-postgresql.sh
-./scripts/deploy-postgresql.sh \
+# Make script executable
+chmod +x scripts/deploy-postgresql-secure.sh
+
+# Run deployment (with sudo access)
+./scripts/deploy-postgresql-secure.sh \
   --domain cmssportswear.us \
   --db-password "your-secure-db-password"
 ```
 
-Script will:
-- Install Node.js, PostgreSQL, Nginx
-- Create database and user
-- Clone and build application
-- Configure PM2 for auto-restart
-- Setup SSL with Let's Encrypt
-- Configure Nginx for subdomains
+This script will:
+- ✅ Create dedicated application users
+- ✅ Install all dependencies
+- ✅ Setup PostgreSQL database
+- ✅ Configure file permissions
+- ✅ Setup PM2 (runs as appuser, NOT root)
+- ✅ Enable firewall (UFW)
+- ✅ Setup Fail2Ban protection
+- ✅ Create automated backup script
 
-#### 5. Initialize Tenants
+#### 4. Configure Environment
 
-SSH into VPS:
-```bash
-cd /opt/thinkmtb-order
-
-# Create first tenant
-npm run create-tenant -- \
-  --name "ThinkMTB" \
-  --slug "thinkmtb" \
-  --admin-email "admin@thinkmtb.com" \
-  --admin-password "SecurePassword123!"
-```
-
-#### 6. Verify Setup
-
-**Test subdomain routing:**
-```bash
-curl -H "Host: thinkmtb.cmssportswear.us" http://localhost:3000
-curl -H "Host: admin.cmssportswear.us" http://localhost:3000/platform-admin/login
-```
-
-**Via browser:**
-- https://thinkmtb.cmssportswear.us → User portal
-- https://admin.cmssportswear.us/platform-admin → Global admin
-- https://cmssportswear.us → Main site
-
-### Using Automated Deploy Script
-
-The `scripts/deploy-postgresql.sh` handles everything:
+The script creates `.env.local` with placeholders. Update it with your settings:
 
 ```bash
-# Full deployment with SSL
-./scripts/deploy-postgresql.sh \
-  --domain yourdomain.com \
-  --db-password secure123 \
-  --admin-email admin@yourdomain.com \
-  --admin-password adminpass123
-
-# Output: Credentials, URLs, and next steps
+sudo nano /opt/thinkmtb-order/.env.local
 ```
+
+Update these critical settings:
+```
+PLATFORM_ADMIN_EMAIL=admin@cmssportswear.us
+PLATFORM_ADMIN_PASSWORD=YourSecurePassword123!
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=your-email@gmail.com
+SMTP_PASSWORD=your-app-password
+SMTP_FROM_EMAIL=noreply@cmssportswear.us
+```
+
+#### 5. Setup SSL/TLS with Let's Encrypt
+
+```bash
+# Install Certbot
+sudo apt install -y certbot python3-certbot-nginx
+
+# Generate certificate
+sudo certbot certonly --standalone -d cmssportswear.us -d *.cmssportswear.us
+
+# Auto-renewal (automatic)
+sudo certbot renew --dry-run
+```
+
+#### 7. Verify Deployment
+
+After deployment completes, verify everything is working:
+
+```bash
+# 1. Check application status
+sudo -u appuser pm2 status
+
+# 2. View application logs
+sudo -u appuser pm2 logs
+
+# 3. Test HTTP endpoints (before SSL)
+curl http://localhost:3000/
+
+# 4. Check processes
+ps aux | grep node
+ps aux | grep postgres
+
+# 5. Verify file permissions
+ls -la /opt/thinkmtb-order/
+ls -la /opt/thinkmtb-order/data/
+
+# 6. Verify firewall
+sudo ufw status
+```
+
+#### 8. Access Your Application
+
+Once deployment is complete and DNS propagates (5-15 minutes):
+
+**User Portal** (team subdomain):
+```
+https://thinkmtb.cmssportswear.us        → User login/register
+https://cms-sports.cmssportswear.us      → Another team (when added)
+```
+
+**Platform Admin Portal**:
+```
+https://admin.cmssportswear.us/platform-admin/login
+Email: (from .env.local PLATFORM_ADMIN_EMAIL)
+Password: (from .env.local PLATFORM_ADMIN_PASSWORD)
+```
+
+**Create New Tenants**:
+1. Login to platform admin
+2. Click "Create New Tenant"
+3. Fill in team details and admin credentials
+4. System creates dedicated tenant portal
 
 ## DNS Configuration
 
