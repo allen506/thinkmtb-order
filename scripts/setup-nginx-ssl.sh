@@ -72,9 +72,14 @@ if [ -z "$EMAIL" ]; then
 fi
 
 # Check if running as non-root with sudo
+# Allow root for VPS deployments where root is the primary user
 if [[ $EUID -eq 0 ]]; then
-  log_error "Please do not run this script as root. It will use sudo as needed."
-  exit 1
+  # Running as root - this is acceptable for initial VPS setup
+  # The script will run commands directly instead of using sudo
+  SUDO=""
+else
+  # Running as non-root - use sudo for privileged commands
+  SUDO="sudo"
 fi
 
 # Install Nginx
@@ -85,13 +90,13 @@ install_nginx() {
     NGINX_VERSION=$(nginx -v 2>&1)
     log_success "Nginx already installed: $NGINX_VERSION"
   else
-    sudo apt-get update -qq
-    sudo apt-get install -y nginx nginx-common &>/dev/null
+    $SUDO apt-get update -qq
+    $SUDO apt-get install -y nginx nginx-common &>/dev/null
     log_success "Nginx installed"
   fi
   
   # Enable Nginx to start on boot
-  sudo systemctl enable nginx
+  $SUDO systemctl enable nginx
 }
 
 # Install Certbot for SSL
@@ -102,7 +107,7 @@ install_certbot() {
     CERTBOT_VERSION=$(certbot --version)
     log_success "Certbot already installed: $CERTBOT_VERSION"
   else
-    sudo apt-get install -y certbot python3-certbot-nginx &>/dev/null
+    $SUDO apt-get install -y certbot python3-certbot-nginx &>/dev/null
     log_success "Certbot installed"
   fi
 }
@@ -203,7 +208,7 @@ server {
 EOF
   
   # Replace placeholders
-  sed "s/DOMAIN_PLACEHOLDER/$DOMAIN/g; s/APP_PORT_PLACEHOLDER/$APP_PORT/g" /tmp/nginx-$DOMAIN.conf | sudo tee $NGINX_CONFIG > /dev/null
+  sed "s/DOMAIN_PLACEHOLDER/$DOMAIN/g; s/APP_PORT_PLACEHOLDER/$APP_PORT/g" /tmp/nginx-$DOMAIN.conf | $SUDO tee $NGINX_CONFIG > /dev/null
   
   log_success "Nginx configuration created"
 }
@@ -216,21 +221,21 @@ enable_nginx_site() {
   NGINX_ENABLED="/etc/nginx/sites-enabled/$DOMAIN"
   
   if [ ! -L "$NGINX_ENABLED" ]; then
-    sudo ln -s "$NGINX_CONFIG" "$NGINX_ENABLED"
+    $SUDO ln -s "$NGINX_CONFIG" "$NGINX_ENABLED"
   fi
   
   # Test Nginx configuration
   log_info "Testing Nginx configuration..."
-  if sudo nginx -t &>/dev/null; then
+  if $SUDO nginx -t &>/dev/null; then
     log_success "Nginx configuration is valid"
   else
-    log_error "Nginx configuration has errors"
-    sudo nginx -t
+    log_error "Nginx configuration test failed:"
+    $SUDO nginx -t
     exit 1
   fi
   
   # Reload Nginx
-  sudo systemctl reload nginx
+  $SUDO systemctl reload nginx
   log_success "Nginx reloaded"
 }
 
@@ -238,8 +243,8 @@ enable_nginx_site() {
 setup_certbot_dirs() {
   log_info "Setting up certbot directories..."
   
-  sudo mkdir -p /var/www/certbot
-  sudo chown -R www-data:www-data /var/www/certbot
+  $SUDO mkdir -p /var/www/certbot
+  $SUDO chown -R www-data:www-data /var/www/certbot
   
   log_success "Certbot directories created"
 }
@@ -256,7 +261,7 @@ generate_ssl_certificate() {
   fi
   
   # Generate certificate
-  sudo certbot certonly --nginx \
+  $SUDO certbot certonly --nginx \
     -d "$DOMAIN" \
     -d "*.$DOMAIN" \
     -d "admin.$DOMAIN" \
@@ -280,10 +285,10 @@ setup_cert_renewal() {
   # Add renewal timer to crontab
   CRON_JOB="0 3 * * * /usr/bin/certbot renew --quiet --post-hook \"systemctl reload nginx\""
   
-  if sudo crontab -l 2>/dev/null | grep -q "certbot renew"; then
+  if $SUDO crontab -l 2>/dev/null | grep -q "certbot renew"; then
     log_success "Certificate renewal already scheduled"
   else
-    (sudo crontab -l 2>/dev/null; echo "$CRON_JOB") | sudo crontab -
+    ($SUDO crontab -l 2>/dev/null; echo "$CRON_JOB") | $SUDO crontab -
     log_success "Certificate renewal scheduled for daily at 3 AM"
   fi
 }
