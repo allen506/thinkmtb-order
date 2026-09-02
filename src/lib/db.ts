@@ -402,16 +402,22 @@ function initializeDb(db: Database.Database) {
   }
 
   // Multi-tenancy migration: Create default tenant if none exists (backward compatibility)
+  console.log('🔍 Checking if tenants table is empty...');
   const tenantCount = db.prepare("SELECT COUNT(*) as count FROM tenants").get() as { count: number };
-  if (tenantCount.count === 0) {
+  console.log('🔍 Tenant count:', tenantCount?.count);
+  
+  if (!tenantCount || tenantCount.count === 0) {
+    console.log('📝 Creating default tenant...');
     const defaultTenantId = 'tenant_default';
-    db.prepare(`
+    const result = db.prepare(`
       INSERT INTO tenants (id, name, slug, admin_email, status, created_at)
       VALUES (?, ?, ?, ?, ?, datetime('now'))
     `).run(defaultTenantId, 'Default Tenant', 'default', 'admin@default.local', 'active');
+    console.log('✅ Default tenant created:', result);
 
     // Initialize default tenant settings from app_settings
     const appSettings = db.prepare("SELECT key, value FROM app_settings").all() as { key: string; value: string }[];
+    console.log('📝 Initializing tenant settings from', appSettings.length, 'app_settings...');
     const insertSetting = db.prepare(`
       INSERT INTO tenant_settings (tenant_id, key, value, updated_at)
       VALUES (?, ?, ?, datetime('now'))
@@ -419,15 +425,43 @@ function initializeDb(db: Database.Database) {
     for (const setting of appSettings) {
       insertSetting.run(defaultTenantId, setting.key, setting.value);
     }
+    console.log('✅ Tenant settings initialized');
+  } else {
+    console.log('✅ Tenant already exists:', tenantCount.count);
+  }
+  
+  // Backup: Ensure default tenant exists
+  if (true) {
+    const checkTenant = db.prepare("SELECT COUNT(*) as count FROM tenants WHERE slug = 'default'").get() as { count: number };
+    if (!checkTenant || checkTenant.count === 0) {
+      console.log('⚠️ Default tenant missing! Attempting recovery...');
+      const defaultTenantId = 'tenant_default';
+      db.prepare(`
+        INSERT OR IGNORE INTO tenants (id, name, slug, admin_email, status, created_at)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
+      `).run(defaultTenantId, 'Default Tenant', 'default', 'admin@default.local', 'active');
+      console.log('✅ Default tenant recovery complete');
 
-    // Migrate existing data to default tenant
-    db.prepare(`UPDATE designs SET tenant_id = ? WHERE tenant_id IS NULL`).run(defaultTenantId);
-    db.prepare(`UPDATE product_types SET tenant_id = ? WHERE tenant_id IS NULL`).run(defaultTenantId);
-    db.prepare(`UPDATE pricing_tiers SET tenant_id = ? WHERE tenant_id IS NULL`).run(defaultTenantId);
-    db.prepare(`UPDATE orders SET tenant_id = ? WHERE tenant_id IS NULL`).run(defaultTenantId);
-    db.prepare(`UPDATE order_items SET tenant_id = ? WHERE tenant_id IS NULL`).run(defaultTenantId);
-    db.prepare(`UPDATE archived_campaigns SET tenant_id = ? WHERE tenant_id IS NULL`).run(defaultTenantId);
-    db.prepare(`UPDATE product_designs SET tenant_id = ? WHERE tenant_id IS NULL`).run(defaultTenantId);
+      // Initialize default tenant settings from app_settings
+      const appSettings = db.prepare("SELECT key, value FROM app_settings").all() as { key: string; value: string }[];
+      const insertSetting = db.prepare(`
+        INSERT OR IGNORE INTO tenant_settings (tenant_id, key, value, updated_at)
+        VALUES (?, ?, ?, datetime('now'))
+      `);
+      for (const setting of appSettings) {
+        insertSetting.run(defaultTenantId, setting.key, setting.value);
+      }
+
+      // Migrate existing data to default tenant
+      db.prepare(`UPDATE designs SET tenant_id = ? WHERE tenant_id IS NULL`).run(defaultTenantId);
+      db.prepare(`UPDATE product_types SET tenant_id = ? WHERE tenant_id IS NULL`).run(defaultTenantId);
+      db.prepare(`UPDATE pricing_tiers SET tenant_id = ? WHERE tenant_id IS NULL`).run(defaultTenantId);
+      db.prepare(`UPDATE orders SET tenant_id = ? WHERE tenant_id IS NULL`).run(defaultTenantId);
+      db.prepare(`UPDATE order_items SET tenant_id = ? WHERE tenant_id IS NULL`).run(defaultTenantId);
+      db.prepare(`UPDATE archived_campaigns SET tenant_id = ? WHERE tenant_id IS NULL`).run(defaultTenantId);
+      db.prepare(`UPDATE product_designs SET tenant_id = ? WHERE tenant_id IS NULL`).run(defaultTenantId);
+      console.log('✅ Data migration complete');
+    }
   }
 
   // Ensure default settings in app_settings for backward compatibility
