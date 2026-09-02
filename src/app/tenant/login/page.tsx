@@ -116,6 +116,7 @@ export default function TenantLoginPage() {
       if (!response.ok) {
         if (data.error === 'team_password_required') {
           setTeamPasswordRequired(true);
+          setLoading(false);
           return;
         }
         setError(data.error || 'Login failed');
@@ -130,19 +131,6 @@ export default function TenantLoginPage() {
       }, 1000);
     } catch (error) {
       setError('An error occurred');
-      setLoading(false);
-    }
-  };
-        }
-        setError(data.error || 'Login failed');
-        return;
-      }
-
-      // Redirect to user dashboard
-      router.push('/tenant/dashboard');
-    } catch (err) {
-      setError('An error occurred. Please try again.');
-    } finally {
       setLoading(false);
     }
   };
