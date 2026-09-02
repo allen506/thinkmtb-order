@@ -580,3 +580,21 @@ function seedData(db: Database.Database) {
   // Insert default exchange rate (₡495 = $1)
   db.prepare("INSERT INTO exchange_rates (crc_to_usd) VALUES (?)").run(0.00202); // 1/495
 }
+
+/**
+ * Ensure database is initialized
+ * Call this at app startup to initialize the database
+ */
+export function initializeDatabase(): void {
+  // Only initialize during runtime, not during build
+  if (process.env.NEXT_PHASE !== 'phase-production-build' && !buildMode) {
+    try {
+      const database = getDb();
+      // Check if initialization worked
+      const tenantCount = (database.prepare("SELECT COUNT(*) as count FROM tenants").get() as { count: number } || { count: 0 }).count;
+      console.log(`✅ Database initialized with ${tenantCount} tenant(s)`);
+    } catch (error) {
+      console.error('⚠️ Database initialization check failed:', error);
+    }
+  }
+}

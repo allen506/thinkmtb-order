@@ -2,6 +2,16 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import NavBar from "@/components/NavBar";
+import { initializeDatabase } from "@/lib/db";
+
+// Initialize database on server startup
+try {
+  if (typeof process !== 'undefined' && process.env.NODE_ENV !== undefined) {
+    initializeDatabase();
+  }
+} catch (error) {
+  console.error('Failed to initialize database in layout:', error);
+}
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
