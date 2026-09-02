@@ -1,8 +1,50 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { extractSubdomain } from "@/lib/subdomain";
 
 export default function Home() {
+  const router = useRouter();
+
+  useEffect(() => {
+    // Detect subdomain and route accordingly
+    if (typeof window !== "undefined") {
+      const hostname = window.location.hostname;
+      const subdomain = extractSubdomain(hostname);
+
+      // Admin dashboard
+      if (subdomain === "cmsadmin") {
+        router.push("/admin");
+        return;
+      }
+
+      // Team portal or redirect - check what it is
+      if (subdomain && subdomain !== "www") {
+        // Fetch subdomain configuration
+        fetch(`/api/subdomain/resolve`, {
+          headers: { host: hostname }
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.type === "admin") {
+              router.push("/admin");
+            } else if (data.type === "team") {
+              router.push(`/tenant/${subdomain}/login`);
+            } else if (data.type === "redirect") {
+              window.location.href = data.redirect_url;
+            }
+            // If unknown, show default page
+          })
+          .catch(() => {
+            // On error, show default page
+          });
+      }
+    }
+  }, [router]);
+
+  // Default home page
   return (
     <div className="min-h-[calc(100vh-56px)] flex flex-col items-center justify-start px-3 sm:px-6 pt-8 sm:pt-16 pb-20" style={{ background: "#f5f5f7" }}>
       <div className="text-center mb-16 sm:mb-16 w-full">

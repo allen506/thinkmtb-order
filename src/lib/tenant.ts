@@ -240,3 +240,68 @@ export function getOrCreateDefaultTenant(): Tenant {
   
   return tenant;
 }
+
+// Subdomain Redirect Functions
+
+export interface SubdomainRedirect {
+  id: number;
+  subdomain: string;
+  redirect_url: string;
+  tenant_id: string | null;
+  is_team_portal: number;
+  team_password: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Get subdomain redirect configuration
+ */
+export function getSubdomainRedirect(subdomain: string): SubdomainRedirect | null {
+  const db = getDb();
+  return db.prepare('SELECT * FROM subdomain_redirects WHERE subdomain = ?').get(subdomain) as SubdomainRedirect | undefined || null;
+}
+
+/**
+ * Set a subdomain redirect
+ */
+export function setSubdomainRedirect(
+  subdomain: string,
+  redirect_url: string,
+  is_team_portal: boolean = false,
+  tenant_id: string | null = null,
+  team_password: string | null = null
+): SubdomainRedirect {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO subdomain_redirects (subdomain, redirect_url, is_team_portal, tenant_id, team_password, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    ON CONFLICT(subdomain) DO UPDATE SET
+      redirect_url = ?,
+      is_team_portal = ?,
+      tenant_id = ?,
+      team_password = ?,
+      updated_at = datetime('now')
+  `).run(
+    subdomain, redirect_url, is_team_portal ? 1 : 0, tenant_id, team_password,
+    redirect_url, is_team_portal ? 1 : 0, tenant_id, team_password
+  );
+  
+  return getSubdomainRedirect(subdomain)!;
+}
+
+/**
+ * Get all subdomain redirects
+ */
+export function getAllSubdomainRedirects(): SubdomainRedirect[] {
+  const db = getDb();
+  return db.prepare('SELECT * FROM subdomain_redirects ORDER BY created_at DESC').all() as SubdomainRedirect[];
+}
+
+/**
+ * Delete a subdomain redirect
+ */
+export function deleteSubdomainRedirect(subdomain: string): void {
+  const db = getDb();
+  db.prepare('DELETE FROM subdomain_redirects WHERE subdomain = ?').run(subdomain);
+}

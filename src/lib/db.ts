@@ -263,6 +263,20 @@ function initializeDb(db: Database.Database) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_archived_campaigns_delete_at ON archived_campaigns(delete_at);
+
+    CREATE TABLE IF NOT EXISTS subdomain_redirects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      subdomain TEXT NOT NULL UNIQUE,
+      redirect_url TEXT NOT NULL,
+      tenant_id TEXT,
+      is_team_portal INTEGER NOT NULL DEFAULT 0,
+      team_password TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_subdomain_redirects_subdomain ON subdomain_redirects(subdomain);
   `);
 
   // Ensure the sequence row exists
