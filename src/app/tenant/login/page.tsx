@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
-export default function TenantLoginPage() {
+function TenantLoginContent() {
   const [mode, setMode] = useState<'password' | 'passwordless'>('passwordless'); // Default to passwordless
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -297,5 +297,13 @@ export default function TenantLoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function TenantLoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center"><div className="text-white">Loading...</div></div>}>
+      <TenantLoginContent />
+    </Suspense>
   );
 }
