@@ -26,8 +26,8 @@ const noOpDb = new Proxy({} as any, {
 });
 
 export function getDb(): Database.Database {
-  // In production/build mode without explicit initialization, return no-op proxy
-  if (process.env.NODE_ENV === 'production' && !process.env.FORCE_DB_INIT && !db && !initAttempted) {
+  // During Next.js build phase, return no-op proxy to avoid database initialization errors
+  if (buildMode && !db && !initAttempted) {
     return noOpDb;
   }
 
@@ -48,10 +48,6 @@ export function getDb(): Database.Database {
       initializeDb(db);
     } catch (error) {
       console.error('Failed to initialize SQLite database:', error);
-      if (buildMode) {
-        // Return no-op proxy during build on error
-        return noOpDb;
-      }
       throw error;
     }
   }
