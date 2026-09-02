@@ -3,6 +3,7 @@ import path from "path";
 
 let db: Database.Database | null = null;
 let DB_PATH: string | null = null;
+let initAttempted = false;
 
 function getDbPath(): string {
   if (!DB_PATH) {
@@ -12,20 +13,37 @@ function getDbPath(): string {
 }
 
 export function getDb(): Database.Database {
-  if (!db) {
-    // Ensure data directory exists
-    const fs = require("fs");
-    const dbPath = getDbPath();
-    const dir = path.dirname(dbPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-
-    db = new Database(dbPath);
-    db.pragma("journal_mode = WAL");
-    db.pragma("foreign_keys = ON");
-    initializeDb(db);
+  // Skip initialization during Next.js build
+  if (process.env.NODE_ENV === 'production' && !process.env.FORCE_DB_INIT) {
+    // In production, use PostgreSQL via environment
+    throw new Error('SQLite should not be used in production. Use PostgreSQL via DATABASE_URL');
   }
+
+  if (!db && !initAttempted) {
+    initAttempted = true;
+    try {
+      // Ensure data directory exists
+      const fs = require("fs");
+      const dbPath = getDbPath();
+      const dir = path.dirname(dbPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      db = new Database(dbPath);
+      db.pragma("journal_mode = WAL");
+      db.pragma("foreign_keys = ON");
+      initializeDb(db);
+    } catch (error) {
+      console.error('Failed to initialize SQLite database:', error);
+      throw error;
+    }
+  }
+  
+  if (!db) {
+    throw new Error('SQLite database is not available');
+  }
+  
   return db;
 }
 
