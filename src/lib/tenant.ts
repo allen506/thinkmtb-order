@@ -204,7 +204,7 @@ export function getOrCreateDefaultTenant(): Tenant {
   
   if (!tenant) {
     // Create default tenant
-    tenant = createTenant('Default Tenant', 'default', 'admin@default.local', '', 'Default Admin') as any;
+    tenant = createTenant('Default Tenant', 'default', 'admin@default.local', '', 'Default Admin');
   }
   
   return tenant;
