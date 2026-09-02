@@ -1,4 +1,15 @@
-import { getDb } from './db';
+import { getDb, initializeDatabase } from './db';
+
+// Ensure database is initialized on first import
+let dbInitialized = false;
+if (!dbInitialized) {
+  try {
+    initializeDatabase();
+    dbInitialized = true;
+  } catch (error) {
+    console.error('Failed to initialize database in tenant module:', error);
+  }
+}
 
 export interface Tenant {
   id: string;
