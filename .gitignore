@@ -45,3 +45,4 @@ next-env.d.ts
 
 # health check logs
 /logs/
+CREDENTIALS_BACKUP.md
