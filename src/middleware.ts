@@ -81,21 +81,6 @@ function isPublicRoute(pathname: string): boolean {
   return publicRoutes.some(route => pathname === route || pathname.startsWith(route + '/'));
 }
 
-/**
- * Check if route is public (doesn't require tenant context)
- */
-function isPublicRoute(pathname: string): boolean {
-  const publicRoutes = [
-    '/',
-    '/api/health',
-    '/login',
-    '/register',
-    '/forgot-password',
-  ];
-
-  return publicRoutes.some(route => pathname === route || pathname.startsWith(route + '/'));
-}
-
 // Configure which routes the middleware applies to
 export const config = {
   matcher: [
