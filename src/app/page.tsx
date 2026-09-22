@@ -31,7 +31,7 @@ export default function Home() {
             if (data.type === "admin") {
               router.push("/admin");
             } else if (data.type === "team") {
-              router.push(`/tenant/${subdomain}/login`);
+              router.push(`/custom/${subdomain}/login`);
             } else if (data.type === "redirect") {
               window.location.href = data.redirect_url;
             }

@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
             subdomain,
             tenant_id: config.tenant_id,
             requires_password: !!config.team_password,
-            redirect: `/tenant/${subdomain}/login`,
+            redirect: `/custom/${subdomain}/login`,
             message: 'Team portal detected'
           });
         } else {

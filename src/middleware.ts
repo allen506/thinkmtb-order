@@ -1,41 +1,52 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 /**
- * Extract tenant from subdomain or path
+ * Extract tenant from path-based routing
  * 
  * Supports:
- * - thinkmtb.cmssportswear.us (subdomain)
- * - localhost:3000/tenant/thinkmtb (path - for local dev)
+ * - /custom/thinkmtb (production path-based)
+ * - /{slug} (catch-all for tenant pages)
  * 
  * Note: Middleware runs in Edge Runtime and cannot access database.
  * Tenant verification happens in route handlers.
  */
 export function middleware(request: NextRequest) {
-  const { pathname, hostname } = request.nextUrl;
+  const { pathname } = request.nextUrl;
 
   // Skip platform admin routes (not tenant-specific)
   if (pathname.startsWith('/platform-admin') || pathname.startsWith('/api/platform-admin')) {
     return NextResponse.next();
   }
 
-  // Extract tenant from subdomain or path (no database access in Edge Runtime)
-  let tenantSlug: string | null = null;
-
-  // Try subdomain extraction first (production)
-  // Example: thinkmtb.cmssportswear.us -> thinkmtb
-  if (hostname && !hostname.includes('localhost')) {
-    const parts = hostname.split('.');
-    if (parts.length > 2) {
-      tenantSlug = parts[0]; // First part is the subdomain
-    }
+  // Skip public routes
+  if (pathname === '/' || pathname.startsWith('/api/') || 
+      pathname.startsWith('/_next') || pathname.startsWith('/public')) {
+    return NextResponse.next();
   }
 
-  // Try path extraction (local dev)
-  // Example: localhost:3000/tenant/thinkmtb -> thinkmtb
-  if (!tenantSlug && pathname.startsWith('/tenant/')) {
+  // Extract tenant from path-based routing
+  let tenantSlug: string | null = null;
+
+  // Try /custom/[slug] pattern first (production path-based)
+  // Example: /custom/thinkmtb -> thinkmtb
+  if (pathname.startsWith('/custom/')) {
     const pathParts = pathname.split('/');
     if (pathParts.length >= 3) {
       tenantSlug = pathParts[2];
+    }
+  }
+
+  // Try /{slug} pattern for tenant pages (catch-all for login, register, etc.)
+  // This handles routes like /thinkmtb/login
+  // But skip known non-tenant routes
+  if (!tenantSlug && !isPublicRoute(pathname)) {
+    const pathParts = pathname.split('/').filter(Boolean);
+    if (pathParts.length > 0) {
+      const firstSegment = pathParts[0];
+      // Skip known non-tenant first segments
+      if (!['admin', 'user', 'designs', 'products', 'tenant', 'final-designs'].includes(firstSegment)) {
+        tenantSlug = firstSegment;
+      }
     }
   }
 
@@ -53,6 +64,21 @@ export function middleware(request: NextRequest) {
   }
 
   return NextResponse.next();
+}
+
+/**
+ * Check if route is public (doesn't require tenant context)
+ */
+function isPublicRoute(pathname: string): boolean {
+  const publicRoutes = [
+    '/',
+    '/api/health',
+    '/login',
+    '/register',
+    '/forgot-password',
+  ];
+
+  return publicRoutes.some(route => pathname === route || pathname.startsWith(route + '/'));
 }
 
 /**

@@ -123,7 +123,7 @@ export default function CreateTenantPage() {
               required
             />
             <p className="mt-1 text-sm text-gray-500">
-              Used in URLs (auto-generated from name). Example: yourdomain.com/tenant/{formData.slug}
+              Used in URLs (auto-generated from name). Example: yourdomain.com/custom/{formData.slug}
             </p>
           </div>
 
