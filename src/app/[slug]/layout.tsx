@@ -6,16 +6,15 @@ export const metadata: Metadata = {
   description: "Team order portal",
 };
 
-export default function TenantLayout({
+export default async function TenantLayout({
   children,
   params,
 }: Readonly<{
   children: React.ReactNode;
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }>) {
-  // The tenant slug is available from params
-  // Middleware has already extracted it and set x-tenant-slug header
-  const slug = params.slug;
+  // Await params since it's now a Promise in Next.js 15+
+  const { slug } = await params;
 
   return (
     <html lang="en" data-tenant-slug={slug}>
