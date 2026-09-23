@@ -13,6 +13,11 @@ import { NextRequest, NextResponse } from 'next/server';
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Skip admin routes (not tenant-specific)
+  if (pathname.startsWith('/cmsadmin') || pathname.startsWith('/api/cmsadmin')) {
+    return NextResponse.next();
+  }
+
   // Skip platform admin routes (not tenant-specific)
   if (pathname.startsWith('/platform-admin') || pathname.startsWith('/api/platform-admin')) {
     return NextResponse.next();
@@ -44,7 +49,7 @@ export function middleware(request: NextRequest) {
     if (pathParts.length > 0) {
       const firstSegment = pathParts[0];
       // Skip known non-tenant first segments
-      if (!['admin', 'user', 'designs', 'products', 'tenant', 'final-designs'].includes(firstSegment)) {
+      if (!['cmsadmin', 'admin', 'user', 'designs', 'products', 'tenant', 'final-designs', 'custom'].includes(firstSegment)) {
         tenantSlug = firstSegment;
       }
     }

@@ -1,7 +1,7 @@
 # ThinkMTB Order System - Testing Guide
 
-**Deployment Date:** September 22, 2026  
-**Latest Commit:** `98ccb52` (Async params fix)  
+**Deployment Date:** September 23, 2026  
+**Latest Update:** Single SSL Certificate Configuration  
 **Server:** Production (74.208.132.71)  
 **Status:** ✅ Live
 
@@ -9,198 +9,216 @@
 
 ## 🎯 Quick Access URLs
 
-### Admin Portal (Subdomain-based)
+### ✅ SINGLE DOMAIN - All services use custom.cmssportswear.us
+
+#### Admin Management Portal
 ```
-https://cmsadmin.cmssportswear.us/admin
+https://custom.cmssportswear.us/cmsadmin
 ```
 - **Email:** `admin@regusa.com`
 - **Password:** `Password123!` ⚠️ (DO NOT CHANGE)
+- **API Access:** `https://custom.cmssportswear.us/cmsadmin/api/*`
 
-### Team Portal - Two Access Methods
+#### Customer Landing Portal
+```
+https://custom.cmssportswear.us/
+```
+- Join form to enter team portals
+- Features overview
 
-#### Method 1: Subdomain-based (Traditional)
+#### Team Portal Access
 ```
-https://thinkmtb.cmssportswear.us
-Team Password: thinkmtb2024
+https://custom.cmssportswear.us/custom/[teamname]/unlock
 ```
+- **Example:** `https://custom.cmssportswear.us/custom/thinkmtb/unlock`
+- **Team Password:** `thinkmtb2024`
 
-#### Method 2: Path-based (NEW - No DNS required)
+#### Team Login (After Password Verification)
 ```
-https://cmssportswear.us/custom/thinkmtb/login
-Team Password: thinkmtb2024
+https://custom.cmssportswear.us/custom/[teamname]/login
+```
+- **Example:** `https://custom.cmssportswear.us/custom/thinkmtb/login`
+- User login after team password is verified
+
+#### Password Reset
+```
+https://custom.cmssportswear.us/custom/[teamname]/forgot-password
 ```
 
 ---
 
 ## 🧪 Testing Scenarios
 
-### Test 1: Home Page Redirect Logic
-**Purpose:** Verify subdomain detection and routing
+### Test 1: Landing Page
+**Purpose:** Verify customer portal is accessible
 
 ```bash
-# Visit the home page
-https://thinkmtb.cmssportswear.us
+# Visit the landing page
+https://custom.cmssportswear.us/
 
 # Expected behavior:
-# - Page should detect subdomain (thinkmtb)
-# - Automatically redirect to team login page
-# - Show "Team Portal" heading
+# - Welcome message for CMS Sports Wear Custom Designs
+# - Feature highlights displayed
+# - Team name input form visible
 ```
 
 ---
 
-### Test 2: Subdomain-Based Team Portal Login
-**Purpose:** Test traditional subdomain routing
+### Test 2: Team Portal Access
+**Purpose:** Test team password gate
 
 ```bash
-# Step 1: Visit team portal
-https://thinkmtb.cmssportswear.us/
+# Step 1: From landing page, enter team name
+https://custom.cmssportswear.us/
+Team: thinkmtb
+Click "Enter Portal"
 
-# Step 2: On login page, enter:
-Email: (any valid email, e.g., test@example.com)
-Password: (any password, e.g., Test123!)
+# Step 2: On unlock page, enter team password
+https://custom.cmssportswear.us/custom/thinkmtb/unlock
 Team Password: thinkmtb2024
 
 # Expected behavior:
-# - Team password field should be visible
-# - After correct team password, user proceeds to registration or login
-# - Session cookie set for future visits
+# - Form accepts password
+# - Redirects to login page on success
+# - Session cookie set
 ```
 
 ---
 
-### Test 3: Path-Based Team Portal (NEW)
-**Purpose:** Test new path-based routing (no DNS required)
+### Test 3: Team Login
+**Purpose:** Test user authentication after team gate
 
 ```bash
-# Step 1: Visit path-based URL
-https://cmssportswear.us/custom/thinkmtb/login
+# Step 1: Direct access to login (after password verified)
+https://custom.cmssportswear.us/custom/thinkmtb/login
 
-# Step 2: Same login flow as Test 2
-Email: test@example.com
-Password: Test123!
-Team Password: thinkmtb2024
+# Step 2: Enter credentials
+Email: demo@cmssportswear.us
+Password: Demo123!
 
 # Expected behavior:
-# - Same login form and workflow
-# - Works without needing subdomain DNS records
-# - Useful for internal/testing URLs
+# - Login form displays
+# - Redirects to dashboard on success
+# - "Create New Account" link available
+# - "Forgot password" link available
 ```
 
 ---
 
 ### Test 4: Admin Dashboard
-**Purpose:** Test admin access
+**Purpose:** Test admin access via single domain
 
 ```bash
-# Step 1: Visit admin portal
-https://cmsadmin.cmssportswear.us/admin
+# Step 1: Visit admin at unified path
+https://custom.cmssportswear.us/cmsadmin
 
-# Step 2: Login with:
+# Step 2: Login with admin credentials
 Email: admin@regusa.com
 Password: Password123!
 
 # Expected behavior:
 # - Admin dashboard loads
-# - Can manage team portals and subdomains
-# - Access to system settings
+# - Can manage products, designs, orders
+# - Access to pricing tiers
+# - Payment management
 ```
 
 ---
 
-### Test 5: API Endpoints
+### Test 5: Admin API Endpoints
 
-#### Subdomain Resolution API
+#### Get Admin Summary
 ```bash
-# Test endpoint that detects subdomain type
-curl -H "host: thinkmtb.cmssortswear.us" \
-  https://cmssportswear.us/api/subdomain/resolve
+curl https://custom.cmssportswear.us/cmsadmin/api/summary
 
 # Expected response:
 {
-  "type": "team",
-  "subdomain": "thinkmtb",
-  "requires_password": true,
-  "redirect": "/custom/thinkmtb/login"
+  "summary": {
+    "totalOrders": 0,
+    "totalItems": 0,
+    "byProduct": [...],
+    "byDesign": [...],
+    "bySize": [...]
+  }
 }
 ```
 
-#### Catalog API
+#### Get Subdomain Redirects
 ```bash
-# Get product catalog (should work without auth)
-curl https://cmssportswear.us/api/catalog
-
-# Expected response:
-# JSON array of products
-```
-
-#### Admin Subdomain Management API
-```bash
-# Get all configured subdomains
-curl https://cmssportswear.us/api/admin/subdomain-redirects
+curl https://custom.cmssportswear.us/cmsadmin/api/subdomain-redirects
 
 # Expected response:
 {
   "success": true,
-  "redirects": [
-    {
-      "subdomain": "thinkmtb",
-      "redirect_url": null,
-      "is_team_portal": true,
-      "team_password": "thinkmtb2024",
-      ...
-    }
-  ]
+  "redirects": [...]
 }
 ```
 
 ---
 
-## 📊 System Architecture - What's New
+## 📊 System Architecture - Unified Domain Structure
 
-### ✨ Path-Based Routing Added
-Previous system used **only subdomain-based routing**:
-- ❌ Required DNS for each team
-- ❌ URLs like: `thinkmtb.cmssportswear.us`
+### ✨ Single Certificate Consolidation
+**Previous system:**
+- ❌ Multiple subdomains: thinkmtb.cmssportswear.us, cmsadmin.cmssportswear.us, custom.cmssportswear.us
+- ❌ Multiple SSL certificates required
+- ❌ Complex DNS management
 
-New system supports **both** approaches:
-- ✅ Subdomain: `thinkmtb.cmssportswear.us`
-- ✅ Path-based: `cmssportswear.us/custom/thinkmtb`
+**New system:**
+- ✅ Single domain: custom.cmssportswear.us
+- ✅ One SSL certificate (expires 2026-12-22)
+- ✅ Path-based routing for all services:
+  - `/` - Customer landing
+  - `/custom/[teamname]/*` - Team portals
+  - `/cmsadmin/*` - Admin management
 
-### 🔧 How It Works
-1. **Middleware** (`src/middleware.ts`) extracts tenant slug from:
-   - `/custom/[slug]` pattern (path-based)
-   - `/{slug}` pattern (catch-all)
-2. **Sets x-tenant-slug header** for route handlers
-3. **Layout** (`src/app/[slug]/layout.tsx`) wraps tenant pages
-4. **API** still uses subdomain detection for backward compatibility
+### 🔧 Routing Structure
+```
+custom.cmssportswear.us/
+├── /                          → Customer landing page
+├── /custom/[teamname]/
+│   ├── /unlock                → Team password gate
+│   ├── /login                 → Team user login
+│   ├── /register              → User registration
+│   ├── /forgot-password       → Password reset request
+│   └── /reset-password        → Complete password reset
+├── /cmsadmin/                 → Admin dashboard
+├── /cmsadmin/api/*            → Admin APIs
+└── /api/                      → Public APIs (catalog, etc.)
+```
+
+### 🔐 Security Features
+- Single SSL certificate for entire domain
+- Team password protection for portals
+- Admin login gate
+- Session-based access control
+- Path-based routing eliminates DNS/cert complexity
 
 ---
 
 ## 🐛 Common Issues & Fixes
 
-### Issue: "This site can't be reached"
-**Cause:** DNS not configured for new subdomains  
-**Solution:** Use path-based URL instead: `https://cmssportswear.us/custom/[teamname]`
-
-### Issue: SSL certificate error on subdomain
-**Cause:** Subdomain not in SSL certificate  
+### Issue: "Cannot find team" when accessing team portal
+**Cause:** Team password gate not verifying correctly  
 **Solution:** 
-1. Use fallback certificate (already configured for `*.cmssportswear.us`)
-2. Or use path-based URL (no additional SSL needed)
+1. Verify team exists in database
+2. Check team password is exact match (case-sensitive)
+3. Ensure cookie is set after password verification
 
-### Issue: "Team password incorrect" loop
-**Cause:** Team password case-sensitive  
-**Solution:** Verify exact password: `thinkmtb2024`
-
-### Issue: Page loads but looks broken
-**Cause:** HSTS cache or browser cache  
+### Issue: Admin area not loading
+**Cause:** Not authenticated as admin  
 **Solution:** 
-```bash
-# Chrome: chrome://net-internals/#hsts
-# Delete domain entry and reload
-# Or use incognito window
-```
+1. Navigate to `https://custom.cmssportswear.us/cmsadmin`
+2. Login with `admin@regusa.com` / `Password123!`
+3. Check password hasn't been changed
+
+### Issue: SSL certificate warnings
+**Cause:** Browser cache or incomplete redirect  
+**Solution:** 
+1. Use https:// explicitly
+2. Clear browser cache
+3. Try incognito/private window
+4. Certificate covers *.cmssportswear.us and custom.cmssportswear.us
 
 ---
 
@@ -209,7 +227,8 @@ New system supports **both** approaches:
 | Component | Email | Password | Notes |
 |-----------|-------|----------|-------|
 | Admin Portal | `admin@regusa.com` | `Password123!` | ⚠️ Final - DO NOT CHANGE |
-| Team Portal (thinkmtb) | Any | Any | Team Password: `thinkmtb2024` |
+| Team Portal (thinkmtb) | - | `thinkmtb2024` | Team password, not user password |
+| Demo User | `demo@cmssportswear.us` | `Demo123!` | Test user in thinkmtb team |
 | Database | N/A | N/A | SQLite - file-based (no password) |
 | SSH Server | root | N/A | SSH key auth only (no password) |
 
@@ -240,20 +259,25 @@ npm run build && \
 pm2 restart thinkmtb-order"
 ```
 
+### Check Nginx for Domain
+```bash
+ssh cmssportswear "sudo cat /etc/nginx/sites-available/custom.cmssportswear.us | head -20"
+```
+
 ---
 
 ## ✅ Deployment Verification Checklist
 
-- [x] Code pulled from GitHub
-- [x] Build succeeds without errors
-- [x] Application starts and listens on port 3000
-- [x] Nginx reverse proxy forwards requests
-- [x] SSL certificates valid
-- [x] Subdomain detection working
-- [x] Path-based routing working
-- [x] Admin portal accessible
-- [x] Team portal accessible
-- [x] API endpoints responding
+- [x] Single domain routing configured
+- [x] SSL certificate for custom.cmssportswear.us installed
+- [x] Path-based routing working (no subdomains required)
+- [x] Admin portal at /cmsadmin
+- [x] Admin API at /cmsadmin/api
+- [x] Customer landing at /
+- [x] Team portals at /custom/[teamname]/*
+- [x] Nginx reverse proxy configured
+- [x] Application builds successfully
+- [x] All routes tested
 
 ---
 
@@ -264,6 +288,7 @@ pm2 restart thinkmtb-order"
 - **SSH Alias:** `cmssportswear`
 - **App Directory:** `/opt/thinkmtb-order`
 - **Database:** `/opt/thinkmtb-order/data/orders.db`
+- **Domain:** custom.cmssportswear.us
 
 **Quick Debug Commands:**
 ```bash
@@ -276,12 +301,15 @@ curl -s http://localhost:3000/
 # Check Nginx config
 sudo nginx -t
 
-# View server logs
-tail -f /var/log/nginx/access.log
+# View application logs
+pm2 logs thinkmtb-order
+
+# View Nginx access logs
+tail -f /var/log/nginx/custom-cmssportswear-access.log
 ```
 
 ---
 
-**Last Updated:** September 22, 2026 @ 15:18 UTC  
-**Commit Hash:** 98ccb52  
-**Status:** 🟢 Deployment Complete
+**Last Updated:** September 23, 2026  
+**Status:** 🟢 Unified Domain Configuration Complete
+

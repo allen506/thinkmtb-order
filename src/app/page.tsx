@@ -14,9 +14,15 @@ export default function Home() {
       const hostname = window.location.hostname;
       const subdomain = extractSubdomain(hostname);
 
-      // Admin dashboard
+      // Admin dashboard - now consolidated under /cmsadmin path
       if (subdomain === "cmsadmin") {
-        router.push("/admin");
+        router.push("/cmsadmin");
+        return;
+      }
+
+      // Customer portal
+      if (subdomain === "custom") {
+        router.push("/custom");
         return;
       }
 
@@ -29,9 +35,9 @@ export default function Home() {
           .then((res) => res.json())
           .then((data) => {
             if (data.type === "admin") {
-              router.push("/admin");
+              router.push("/cmsadmin");
             } else if (data.type === "team") {
-              router.push(`/custom/${subdomain}/login`);
+              router.push(`/custom/${subdomain}/unlock`);
             } else if (data.type === "redirect") {
               window.location.href = data.redirect_url;
             }
