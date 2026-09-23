@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import path from "path";
+import { migrateDesignWorkflow } from "./db-migrations";
 
 let db: Database.Database | null = null;
 let DB_PATH: string | null = null;
@@ -489,6 +490,14 @@ function initializeDb(db: Database.Database) {
   db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payment_cash', 'Pay in person at the event or contact an admin.')`).run();
   db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('archive_retention_days', '365')`).run();
   db.prepare(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('session_timeout_minutes', '15')`).run();
+
+  // Run design workflow migration
+  try {
+    migrateDesignWorkflow(db);
+  } catch (error) {
+    console.warn('Design workflow migration warning:', error);
+    // Don't throw - migration is optional
+  }
 }
 
 function seedData(db: Database.Database) {
