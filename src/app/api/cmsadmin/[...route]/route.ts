@@ -6,65 +6,105 @@ import { NextRequest, NextResponse } from 'next/server';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { route: string[] } }
+  { params }: { params: Promise<{ route: string[] }> }
 ) {
-  const route = params.route?.join('/') || '';
-  const adminUrl = `/api/admin/${route}`;
+  const { route } = await params;
+  const routePath = route?.join('/') || '';
   
-  // Forward to admin route
-  const response = await fetch(new URL(adminUrl, request.url), {
-    method: 'GET',
-    headers: request.headers,
-  });
-
-  return response;
+  // Create URL for internal request
+  const url = new URL(request.url);
+  url.pathname = `/api/admin/${routePath}`;
+  url.search = request.nextUrl.search;
+  
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: request.headers,
+    });
+    return response;
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Failed to proxy request' },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { route: string[] } }
+  { params }: { params: Promise<{ route: string[] }> }
 ) {
-  const route = params.route?.join('/') || '';
-  const adminUrl = `/api/admin/${route}`;
+  const { route } = await params;
+  const routePath = route?.join('/') || '';
   
-  const body = await request.text();
-  const response = await fetch(new URL(adminUrl, request.url), {
-    method: 'POST',
-    headers: request.headers,
-    body: body || undefined,
-  });
-
-  return response;
+  const url = new URL(request.url);
+  url.pathname = `/api/admin/${routePath}`;
+  url.search = request.nextUrl.search;
+  
+  try {
+    const body = await request.text();
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: request.headers,
+      body: body || undefined,
+    });
+    return response;
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Failed to proxy request' },
+      { status: 500 }
+    );
+  }
 }
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { route: string[] } }
+  { params }: { params: Promise<{ route: string[] }> }
 ) {
-  const route = params.route?.join('/') || '';
-  const adminUrl = `/api/admin/${route}`;
+  const { route } = await params;
+  const routePath = route?.join('/') || '';
   
-  const body = await request.text();
-  const response = await fetch(new URL(adminUrl, request.url), {
-    method: 'PATCH',
-    headers: request.headers,
-    body: body || undefined,
-  });
-
-  return response;
+  const url = new URL(request.url);
+  url.pathname = `/api/admin/${routePath}`;
+  url.search = request.nextUrl.search;
+  
+  try {
+    const body = await request.text();
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: request.headers,
+      body: body || undefined,
+    });
+    return response;
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Failed to proxy request' },
+      { status: 500 }
+    );
+  }
 }
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { route: string[] } }
+  { params }: { params: Promise<{ route: string[] }> }
 ) {
-  const route = params.route?.join('/') || '';
-  const adminUrl = `/api/admin/${route}`;
+  const { route } = await params;
+  const routePath = route?.join('/') || '';
   
-  const response = await fetch(new URL(adminUrl, request.url), {
-    method: 'DELETE',
-    headers: request.headers,
-  });
-
-  return response;
+  const url = new URL(request.url);
+  url.pathname = `/api/admin/${routePath}`;
+  url.search = request.nextUrl.search;
+  
+  try {
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: request.headers,
+    });
+    return response;
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Failed to proxy request' },
+      { status: 500 }
+    );
+  }
 }
