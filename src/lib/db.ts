@@ -1,11 +1,19 @@
 import Database from "better-sqlite3";
 import path from "path";
 import { migrateDesignWorkflow } from "./db-migrations";
+import { Pool } from "pg";
 
 let db: Database.Database | null = null;
+let pgPool: Pool | null = null;
 let DB_PATH: string | null = null;
 let initAttempted = false;
 let buildMode = false;
+let usePostgres = false;
+
+// Detect if we should use PostgreSQL
+if (process.env.DATABASE_URL) {
+  usePostgres = true;
+}
 
 // Detect if we're in Next.js build by checking if this is being imported during build
 if (typeof global !== 'undefined' && (global as any).__NEXT_DATA__?.isPreview === false) {

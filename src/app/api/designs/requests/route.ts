@@ -1,29 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import {
+  query,
+  queryOne,
+  execute,
+  extractContext,
+  requireAuth,
+  errorResponse,
+  successResponse,
+  withTransaction,
+} from "@/lib/route-helpers";
+import { v4 as uuidv4 } from "uuid";
 
 export async function GET(request: NextRequest) {
   try {
-    const db = getDb();
-    const tenantSlug = request.headers.get("x-tenant-slug") || "default";
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
+    const ctx = extractContext(request);
 
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Unauthorized - user ID required" },
-        { status: 401 }
-      );
+    // Require auth
+    const authError = requireAuth(ctx);
+    if (authError) {
+      return errorResponse(authError.error, 401);
     }
 
     // Get tenant ID from slug
-    const tenant = db
-      .prepare("SELECT id FROM tenants WHERE slug = ?")
-      .get(tenantSlug) as { id: string } | undefined;
+    const tenant = await queryOne<{ id: string }>(
+      "SELECT id FROM tenants WHERE slug = ?",
+      [ctx.tenantSlug]
+    );
     if (!tenant) {
-      return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
+      return errorResponse("Tenant not found", 404);
     }
 
-    let query = `
+    let sql = `
       SELECT 
         dr.id,
         dr.title,
@@ -49,113 +56,91 @@ export async function GET(request: NextRequest) {
     // - Regular users see only their own requests
     // - Team captains see requests from their team
     // - Admins see all
-    if (userRole !== "admin") {
-      query += ` AND (dr.requester_id = ? OR dr.team_id IN (
+    if (ctx.userRole !== "admin") {
+      sql += ` AND (dr.requester_id = ? OR dr.team_id IN (
         SELECT team_id FROM user_accounts WHERE id = ?
       ))`;
-      params.push(userId, userId);
+      params.push(ctx.userId, ctx.userId);
     }
 
-    query += ` GROUP BY dr.id ORDER BY dr.created_at DESC`;
+    sql += ` GROUP BY dr.id ORDER BY dr.created_at DESC`;
 
-    const requests = db.prepare(query).all(...params);
+    const requests = await query<any>(sql, params);
 
-    return NextResponse.json({
+    return successResponse({
       success: true,
       requests,
-      count: (requests as any[]).length,
+      count: requests.length,
     });
   } catch (error) {
     console.error("Error fetching design requests:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch design requests" },
-      { status: 500 }
-    );
+    return errorResponse("Failed to fetch design requests", 500);
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const db = getDb();
-    const tenantSlug = request.headers.get("x-tenant-slug") || "default";
-    const userId = request.headers.get("x-user-id");
+    const ctx = extractContext(request);
 
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Unauthorized - user ID required" },
-        { status: 401 }
-      );
+    // Require auth
+    const authError = requireAuth(ctx);
+    if (authError) {
+      return errorResponse(authError.error, 401);
     }
 
     // Get tenant ID
-    const tenant = db
-      .prepare("SELECT id FROM tenants WHERE slug = ?")
-      .get(tenantSlug) as { id: string } | undefined;
+    const tenant = await queryOne<{ id: string }>(
+      "SELECT id FROM tenants WHERE slug = ?",
+      [ctx.tenantSlug]
+    );
     if (!tenant) {
-      return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
+      return errorResponse("Tenant not found", 404);
     }
 
     // Verify user is team captain
-    const user = db
-      .prepare("SELECT is_team_captain, team_id FROM user_accounts WHERE id = ?")
-      .get(userId) as { is_team_captain: number; team_id: string } | undefined;
+    const user = await queryOne<{
+      is_team_captain: number;
+      team_id: string;
+    }>(
+      "SELECT is_team_captain, team_id FROM user_accounts WHERE id = ? AND tenant_id = ?",
+      [ctx.userId, tenant.id]
+    );
 
     if (!user || !user.is_team_captain) {
-      return NextResponse.json(
-        { error: "Only team captains can request designs" },
-        { status: 403 }
-      );
+      return errorResponse("Only team captains can request designs", 403);
     }
 
     const { title, description } = await request.json();
 
     if (!title || !description) {
-      return NextResponse.json(
-        { error: "Title and description are required" },
-        { status: 400 }
-      );
+      return errorResponse("Title and description are required", 400);
     }
 
-    const id = `dr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const id = uuidv4();
 
-    const result = db
-      .prepare(
-        `
+    const result = await execute(
+      `
       INSERT INTO design_requests 
         (id, tenant_id, title, description, requester_id, team_id, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-    `
-      )
-      .run(
-        id,
-        tenant.id,
-        title,
-        description,
-        userId,
-        user.team_id,
-        "pending"
-      );
+      VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+    `,
+      [id, tenant.id, title, description, ctx.userId, user.team_id, "pending"]
+    );
 
     if (result.changes === 0) {
-      return NextResponse.json(
-        { error: "Failed to create design request" },
-        { status: 500 }
-      );
+      return errorResponse("Failed to create design request", 500);
     }
 
-    return NextResponse.json(
+    return successResponse(
       {
         success: true,
         requestId: id,
         message: "Design request created successfully",
       },
-      { status: 201 }
+      201
     );
   } catch (error) {
     console.error("Error creating design request:", error);
-    return NextResponse.json(
-      { error: "Failed to create design request" },
-      { status: 500 }
-    );
+    return errorResponse("Failed to create design request", 500);
   }
 }
