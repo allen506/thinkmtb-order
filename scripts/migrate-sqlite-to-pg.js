@@ -19,7 +19,7 @@ async function migrate() {
   // Connect to PostgreSQL
   const pgPool = new Pool({
     connectionString:
-      "postgresql://thinkmtb:ThinkMTB@2026!Secure@localhost:5432/thinkmtb_order",
+      "postgresql://thinkmtb:ThinkMTB2026Secure@localhost:5432/thinkmtb_order",
   });
   console.log("✅ Connected to PostgreSQL\n");
 
