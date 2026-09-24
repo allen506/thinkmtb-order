@@ -156,7 +156,177 @@ curl https://custom.cmssportswear.us/cmsadmin/api/subdomain-redirects
 
 ---
 
-## 📊 System Architecture - Unified Domain Structure
+### Test 6: Phase 1 - Design Request Submission
+**Purpose:** Test complete design request workflow
+
+```bash
+# Step 1: Login as team user
+https://custom.cmssportswear.us/custom/thinkmtb/login
+Email: demo@cmssportswear.us
+Password: Demo123!
+
+# Step 2: Navigate to design request step
+https://custom.cmssportswear.us/custom/thinkmtb/order/design
+
+# Step 3: Submit design request
+- Title: "2026 Team Jerseys"
+- Description: "Custom design with team logo and colors"
+- Upload files: Select 1-2 image files (PNG/JPG)
+- Click "Submit Design Request"
+
+# Expected behavior:
+# - Success message displayed
+# - Request appears in design requests list
+# - Status shows "pending"
+# - Files are attached
+# - Redirect to request detail view
+```
+
+---
+
+### Test 7: Phase 2 - Product Selection
+**Purpose:** Test product selection with dynamic pricing
+
+```bash
+# Prerequisites: Complete Test 6 first, design must be approved
+
+# Step 1: After design is approved, navigate to products
+https://custom.cmssportswear.us/custom/thinkmtb/order/products
+
+# Step 2: Select products
+- Choose 1+ products from list (e.g., "Jersey", "Shorts")
+- Enter quantity for each product
+- Watch prices update in real-time based on quantity
+- Verify pricing tiers display correctly
+
+# Step 3: Review order summary
+- Check subtotal calculation
+- Verify USD and CRC amounts
+- Review exchange rate (typically 500 CRC/USD)
+- Optional: Add notes to order
+
+# Step 4: Submit order
+- Click "Create Order"
+
+# Expected behavior:
+# - Success message: "Order created successfully"
+# - Order status set to 'draft_products_selected'
+# - Automatic redirect to payment page
+# - Order ID generated
+```
+
+---
+
+### Test 8: Phase 3 - Payment & Order Review
+**Purpose:** Test payment request workflow
+
+```bash
+# Prerequisites: Complete Test 7 first
+
+# Step 1: On payment review page (automatic redirect from Test 7)
+https://custom.cmssportswear.us/custom/thinkmtb/order/payment/[ORDER_ID]
+
+# Step 2: Review order details
+- Verify order number displays
+- Check all selected items in table
+- Confirm quantities and prices
+- Verify subtotal = sum of items
+
+# Step 3: Review payment information
+- 50% Deposit Due: Shows USD and CRC amounts
+- Final Payment: Shows remaining 50%
+- Timeline shows 5-step process
+
+# Step 4: Request payment link
+- Click "Request Payment Link" button
+- Confirm in dialog
+- Success message: "Payment request created!"
+
+# Expected behavior:
+# - Payment record created with status='requested'
+# - Order status changes to 'payment_requested'
+# - UI shows payment status pending
+# - Admin receives notification (next phase)
+# - Page displays FAQ and support info
+```
+
+---
+
+### Test 9: End-to-End Workflow (All 3 Phases)
+**Purpose:** Test complete customer journey from design to payment
+
+```bash
+# Complete flow:
+# 1. Login → Test 6 (Design) → Design gets approved (admin action)
+# 2. Navigate to products → Test 7 (Products) → Create order
+# 3. Auto-redirect → Test 8 (Payment) → Request payment
+
+# API Endpoints tested:
+POST /api/designs/requests                    # Submit design
+GET  /api/designs/requests                    # List designs
+GET  /api/designs/requests/[id]               # Get design details
+POST /api/designs/requests/[id]/files         # Upload files
+POST /api/designs/requests/[id]/submissions   # Submit to designers
+PATCH /api/designs/requests/[id]/submissions/[subId]  # Approve submission
+
+GET  /api/team/products                       # List products
+POST /api/team/products/calculate-price       # Calculate pricing
+POST /api/orders/create-with-products         # Create order
+
+GET  /api/orders/[id]/payment                 # Get order & payment info
+POST /api/orders/[id]/payment                 # Request payment link
+
+# Database tables used:
+# - design_requests
+# - design_request_files
+# - design_submissions
+# - design_submission_files
+# - design_comments
+# - team_products
+# - orders
+# - order_items
+# - order_payments
+# - pricing_tiers
+# - price_overrides
+```
+
+---
+
+## �️ Database Configuration
+
+### Current Setup
+- **Type:** SQLite with better-sqlite3
+- **Location:** `/opt/thinkmtb-order/data/orders.db`
+- **Mode:** WAL (Write-Ahead Logging)
+- **Constraints:** Foreign keys enabled
+
+### Migration to PostgreSQL (Optional)
+If migrating to PostgreSQL for better concurrent access:
+
+```bash
+# On server, install PostgreSQL
+ssh cmssportswear "sudo apt-get install postgresql postgresql-contrib"
+
+# Create database and user
+ssh cmssportswear "sudo -u postgres psql << EOF
+CREATE DATABASE thinkmtb_order;
+CREATE USER thinkmtb WITH PASSWORD '[SECURE_PASSWORD]';
+ALTER ROLE thinkmtb SET client_encoding TO 'utf8';
+ALTER ROLE thinkmtb SET default_transaction_isolation TO 'read committed';
+ALTER ROLE thinkmtb SET default_transaction_deferrable TO on;
+GRANT ALL PRIVILEGES ON DATABASE thinkmtb_order TO thinkmtb;
+EOF"
+
+# Update .env to use PostgreSQL:
+# DATABASE_URL=postgresql://thinkmtb:[PASSWORD]@localhost:5432/thinkmtb_order
+
+# Migrate SQLite data to PostgreSQL (requires custom migration script)
+# Then deploy and restart application
+```
+
+---
+
+## �📊 System Architecture - Unified Domain Structure
 
 ### ✨ Single Certificate Consolidation
 **Previous system:**
@@ -310,6 +480,39 @@ tail -f /var/log/nginx/custom-cmssportswear-access.log
 
 ---
 
+## 📋 Test Execution Checklist
+
+### Pre-Testing Setup
+- [ ] Application deployed to production (PM2 running)
+- [ ] Database initialized with schema migrations
+- [ ] Admin credentials verified (admin@regusa.com / Password123!)
+- [ ] Demo user exists (demo@cmssportswear.us / Demo123!)
+- [ ] Team password set (thinkmtb2024)
+- [ ] Design files available for upload (JPG/PNG images)
+
+### Test Execution Order
+1. [ ] Test 1: Landing Page
+2. [ ] Test 2: Team Portal Access
+3. [ ] Test 3: Team Login
+4. [ ] Test 4: Admin Dashboard
+5. [ ] Test 5: Admin API Endpoints
+6. [ ] Test 6: Phase 1 - Design Request
+7. [ ] Test 7: Phase 2 - Product Selection
+8. [ ] Test 8: Phase 3 - Payment Review
+9. [ ] Test 9: End-to-End Workflow
+
+### Post-Testing Verification
+- [ ] All API endpoints returning expected responses
+- [ ] Database records created successfully
+- [ ] No TypeScript/JavaScript errors in console
+- [ ] No 500 errors in PM2 logs
+- [ ] Page redirects working correctly
+- [ ] Session cookies persisting across requests
+- [ ] Payment request status changes correctly
+
+---
+
 **Last Updated:** September 23, 2026  
-**Status:** 🟢 Unified Domain Configuration Complete
+**Status:** 🟢 Phase 1-3 Testing Guide Complete
+**Database:** SQLite (4.4 compatible)
 
