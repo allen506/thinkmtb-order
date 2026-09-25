@@ -5,6 +5,8 @@ module.exports = {
       script: "npm",
       args: "run start",
       instances: 1,
+      exec_mode: "fork",
+      cwd: "/opt/thinkmtb-order",
       autorestart: true,
       watch: false,
       max_memory_restart: "500M",
