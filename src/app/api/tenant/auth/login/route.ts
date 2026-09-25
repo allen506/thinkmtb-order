@@ -1,7 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getTenantBySlug } from '@/lib/tenant';
-import { authenticateUser, getUserAccountByEmail } from '@/lib/user';
-import crypto from 'crypto';
+import { NextRequest } from 'next/server';
+import {
+  queryOne,
+  errorResponse,
+  successResponse,
+  createSessionToken,
+  verifyPassword,
+} from '@/lib/route-helpers';
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,33 +13,48 @@ export async function POST(request: NextRequest) {
     const tenantSlug = request.headers.get('x-tenant-slug');
 
     if (!email || !password || !tenantSlug) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
+      return errorResponse('Missing required fields', 400);
     }
 
-    const tenant = getTenantBySlug(tenantSlug);
+    // Get tenant by slug
+    const tenant = await queryOne<{ id: string }>(
+      'SELECT id FROM tenants WHERE slug = ?',
+      [tenantSlug]
+    );
+
     if (!tenant) {
-      return NextResponse.json(
-        { error: 'Tenant not found' },
-        { status: 404 }
-      );
+      return errorResponse('Tenant not found', 404);
     }
 
-    // Authenticate user
-    const user = authenticateUser(tenant.id, email, password, teamPassword);
+    // Get user account by email
+    const user = await queryOne<any>(
+      `SELECT id, email, password_hash, full_name, team_id 
+       FROM user_accounts 
+       WHERE tenant_id = ? AND email = ?`,
+      [tenant.id, email]
+    );
+
     if (!user) {
-      return NextResponse.json(
-        { error: 'Invalid email, password, or team password' },
-        { status: 401 }
-      );
+      return errorResponse('Invalid email or password', 401);
+    }
+
+    // Verify password
+    if (!verifyPassword(password, user.password_hash)) {
+      return errorResponse('Invalid email or password', 401);
     }
 
     // Create session token
-    const token = crypto.randomBytes(32).toString('hex');
-    const response = NextResponse.json({ success: true, user: { id: user.id, email: user.email, full_name: user.full_name } });
-    
+    const token = createSessionToken();
+    const response = successResponse({
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        full_name: user.full_name,
+        team_id: user.team_id,
+      },
+    });
+
     response.cookies.set('tenant_session', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -54,9 +73,6 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (error) {
     console.error('Login error:', error);
-    return NextResponse.json(
-      { error: 'An error occurred' },
-      { status: 500 }
-    );
+    return errorResponse('An error occurred', 500);
   }
 }

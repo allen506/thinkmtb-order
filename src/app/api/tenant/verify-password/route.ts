@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { NextRequest } from 'next/server';
+import { queryOne, errorResponse, successResponse } from '@/lib/route-helpers';
 
 /**
  * Verify team password
@@ -11,43 +11,31 @@ export async function POST(request: NextRequest) {
     const { teamSlug, teamPassword } = await request.json();
 
     if (!teamSlug || !teamPassword) {
-      return NextResponse.json(
-        { error: 'Team slug and password are required' },
-        { status: 400 }
-      );
+      return errorResponse('Team slug and password are required', 400);
     }
 
     // Get subdomain config from database
-    const db = getDb();
-    const redirect = db
-      .prepare('SELECT * FROM subdomain_redirects WHERE subdomain = ?')
-      .get(teamSlug) as any;
+    const redirect = await queryOne<any>(
+      'SELECT tenant_id, team_password FROM subdomain_redirects WHERE subdomain = ?',
+      [teamSlug]
+    );
 
     if (!redirect) {
-      return NextResponse.json(
-        { error: 'Team not found' },
-        { status: 404 }
-      );
+      return errorResponse('Team not found', 404);
     }
 
     // Verify team password
     if (redirect.team_password !== teamPassword) {
-      return NextResponse.json(
-        { error: 'Invalid team password' },
-        { status: 401 }
-      );
+      return errorResponse('Invalid team password', 401);
     }
 
-    return NextResponse.json({
+    return successResponse({
       success: true,
       message: 'Team password verified',
       teamId: redirect.tenant_id,
     });
   } catch (error) {
     console.error('Team password verification error:', error);
-    return NextResponse.json(
-      { error: 'Failed to verify team password' },
-      { status: 500 }
-    );
+    return errorResponse('Failed to verify team password', 500);
   }
 }

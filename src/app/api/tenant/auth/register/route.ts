@@ -1,7 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getTenantBySlug } from '@/lib/tenant';
-import { createUserAccount, getUserAccountByEmail } from '@/lib/user';
-import { getDb } from '@/lib/db';
+import { NextRequest } from 'next/server';
+import {
+  queryOne,
+  execute,
+  errorResponse,
+  successResponse,
+  hashPassword,
+} from '@/lib/route-helpers';
+import { v4 as uuidv4 } from 'uuid';
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,64 +14,62 @@ export async function POST(request: NextRequest) {
     const tenantSlug = request.headers.get('x-tenant-slug');
 
     if (!full_name || !email || !password || !tenantSlug) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
+      return errorResponse('Missing required fields', 400);
     }
 
     if (password.length < 8) {
-      return NextResponse.json(
-        { error: 'Password must be at least 8 characters' },
-        { status: 400 }
-      );
+      return errorResponse('Password must be at least 8 characters', 400);
     }
 
-    const tenant = getTenantBySlug(tenantSlug);
+    // Get tenant
+    const tenant = await queryOne<{ id: string }>(
+      'SELECT id FROM tenants WHERE slug = ?',
+      [tenantSlug]
+    );
+
     if (!tenant) {
-      return NextResponse.json(
-        { error: 'Tenant not found' },
-        { status: 404 }
-      );
+      return errorResponse('Tenant not found', 404);
     }
 
     // Check if user already exists
-    const existing = getUserAccountByEmail(tenant.id, email);
+    const existing = await queryOne<any>(
+      'SELECT id FROM user_accounts WHERE tenant_id = ? AND email = ?',
+      [tenant.id, email]
+    );
+
     if (existing) {
-      return NextResponse.json(
-        { error: 'Email already in use' },
-        { status: 400 }
-      );
+      return errorResponse('Email already in use', 400);
     }
 
     // Validate team password if required
-    const db = getDb();
-    const teamPasswordSetting = db.prepare(
-      'SELECT value FROM tenant_settings WHERE tenant_id = ? AND key = ?'
-    ).get(tenant.id, 'team_password') as { value: string } | undefined;
+    const teamPasswordSetting = await queryOne<{ value: string }>(
+      'SELECT value FROM tenant_settings WHERE tenant_id = ? AND key = ?',
+      [tenant.id, 'team_password']
+    );
 
-    if (teamPasswordSetting && teamPasswordSetting.value && teamPasswordSetting.value !== teamPassword) {
-      return NextResponse.json(
-        { error: 'Invalid team password' },
-        { status: 401 }
-      );
+    if (teamPasswordSetting?.value && teamPasswordSetting.value !== teamPassword) {
+      return errorResponse('Invalid team password', 401);
     }
 
     // Create user account
-    const user = createUserAccount(tenant.id, email, password, full_name);
+    const userId = uuidv4();
+    const passwordHash = hashPassword(password);
 
-    return NextResponse.json(
+    await execute(
+      `INSERT INTO user_accounts (id, tenant_id, email, password_hash, full_name, role, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [userId, tenant.id, email, passwordHash, full_name, 'user']
+    );
+
+    return successResponse(
       {
         success: true,
-        user: { id: user.id, email: user.email, full_name: user.full_name },
+        user: { id: userId, email, full_name },
       },
-      { status: 201 }
+      201
     );
   } catch (error) {
     console.error('Register error:', error);
-    return NextResponse.json(
-      { error: 'An error occurred' },
-      { status: 500 }
-    );
+    return errorResponse('An error occurred', 500);
   }
 }

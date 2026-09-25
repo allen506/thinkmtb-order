@@ -221,6 +221,25 @@ async function runMigrations(client: any): Promise<void> {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`,
+
+    // Subdomain redirects and team config
+    `CREATE TABLE IF NOT EXISTS subdomain_redirects (
+      id TEXT PRIMARY KEY,
+      subdomain TEXT UNIQUE NOT NULL,
+      tenant_id TEXT NOT NULL REFERENCES tenants(id),
+      team_password TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
+
+    // Password reset tokens
+    `CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES user_accounts(id),
+      token_hash TEXT NOT NULL,
+      expires_at TIMESTAMP NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
   ];
 
   for (const migration of migrations) {

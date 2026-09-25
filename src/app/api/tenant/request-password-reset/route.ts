@@ -1,6 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
-import crypto from 'crypto';
+import { NextRequest } from 'next/server';
+import {
+  queryOne,
+  execute,
+  errorResponse,
+  successResponse,
+  hashPassword,
+} from '@/lib/route-helpers';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Request password reset
@@ -12,56 +18,45 @@ export async function POST(request: NextRequest) {
     const { teamSlug, email } = await request.json();
 
     if (!teamSlug || !email) {
-      return NextResponse.json(
-        { error: 'Team slug and email are required' },
-        { status: 400 }
-      );
+      return errorResponse('Team slug and email are required', 400);
     }
 
-    const db = getDb();
-
     // Verify team exists
-    const redirect = db
-      .prepare('SELECT * FROM subdomain_redirects WHERE subdomain = ?')
-      .get(teamSlug) as any;
+    const redirect = await queryOne<any>(
+      'SELECT tenant_id FROM subdomain_redirects WHERE subdomain = ?',
+      [teamSlug]
+    );
 
     if (!redirect) {
-      return NextResponse.json(
-        { error: 'Team not found' },
-        { status: 404 }
-      );
+      return errorResponse('Team not found', 404);
     }
 
     // Check if user exists
-    const user = db
-      .prepare('SELECT * FROM users WHERE email = ? AND tenant_id = ?')
-      .get(email, redirect.tenant_id) as any;
+    const user = await queryOne<any>(
+      'SELECT id FROM user_accounts WHERE email = ? AND tenant_id = ?',
+      [email, redirect.tenant_id]
+    );
 
     if (!user) {
       // For security, still return success (don't reveal if email exists)
-      return NextResponse.json({
+      return successResponse({
         success: true,
         message: 'If an account with this email exists, a reset link has been sent',
       });
     }
 
     // Generate reset token
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const resetTokenHash = crypto
-      .createHash('sha256')
-      .update(resetToken)
-      .digest('hex');
-    const resetTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    const resetToken = uuidv4();
+    const resetTokenHash = hashPassword(resetToken);
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
     // Store reset token in database
-    try {
-      db.prepare(
-        'UPDATE users SET password_reset_token = ?, password_reset_expires = ? WHERE id = ?'
-      ).run(resetTokenHash, resetTokenExpiry.toISOString(), user.id);
-    } catch (error) {
-      // Table might not have these columns - create them if needed
-      console.error('Error storing reset token:', error);
-    }
+    const tokenId = uuidv4();
+    await execute(
+      `INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at, created_at)
+       VALUES (?, ?, ?, ?, NOW())`,
+      [tokenId, user.id, resetTokenHash, expiresAt.toISOString()]
+    );
 
     // TODO: Send email with reset link
     // This is where you'd call your SMTP service
@@ -80,16 +75,12 @@ export async function POST(request: NextRequest) {
       `[DEV] Password reset link for ${email}: /custom/${teamSlug}/reset-password?token=${resetToken}`
     );
 
-    return NextResponse.json({
+    return successResponse({
       success: true,
-      message:
-        'If an account with this email exists, a reset link has been sent to your email',
+      message: 'If an account with this email exists, a reset link has been sent',
     });
   } catch (error) {
     console.error('Password reset request error:', error);
-    return NextResponse.json(
-      { error: 'Failed to process password reset request' },
-      { status: 500 }
-    );
+    return errorResponse('An error occurred', 500);
   }
 }
