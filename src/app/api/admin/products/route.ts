@@ -1,87 +1,76 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
-import { isAdminAuthenticated, unauthorized } from '@/lib/admin-auth';
-
-const db = getDb();
+import { NextRequest } from "next/server";
+import {
+  query,
+  execute,
+  errorResponse,
+  successResponse,
+  requireAdminSession,
+} from "@/lib/route-helpers";
+import { v4 as uuidv4 } from "uuid";
 
 export async function GET(request: NextRequest) {
-  if (!isAdminAuthenticated(request)) return unauthorized();
+  const authError = await requireAdminSession(request);
+  if (authError) {
+    return errorResponse(authError.error, 401);
+  }
+
   try {
-    const products = db
-      .prepare(
-        `
-      SELECT 
+    const products = await query<any>(
+      `SELECT 
         id, 
         name, 
         category, 
         description, 
         example_url,
-        fit_options,
-        active, 
         sort_order, 
         created_at
       FROM product_types
-      ORDER BY sort_order ASC
-    `
-      )
-      .all();
+      ORDER BY sort_order ASC`
+    );
 
-    return NextResponse.json({ products });
+    return successResponse({ products });
   } catch (error) {
     console.error("Error fetching products:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch products" },
-      { status: 500 }
-    );
+    return errorResponse("Failed to fetch products", 500);
   }
 }
 
-export async function POST(req: NextRequest) {
-  if (!isAdminAuthenticated(req)) return unauthorized();
+export async function POST(request: NextRequest) {
+  const authError = await requireAdminSession(request);
+  if (authError) {
+    return errorResponse(authError.error, 401);
+  }
+
   try {
-    const body = await req.json();
-    const { name, category, description, example_url, fit_options, active, sort_order } =
-      body;
-
-    if (!name || !category) {
-      return NextResponse.json(
-        { error: "Name and category are required" },
-        { status: 400 }
-      );
-    }
-
-    const id = `${category}-${name
-      .toLowerCase()
-      .replace(/\s+/g, "-")
-      .substring(0, 20)}`;
-    const now = new Date().toISOString().split("T")[0];
-
-    db.prepare(
-      `
-      INSERT INTO product_types (id, name, category, description, example_url, fit_options, active, sort_order, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `
-    ).run(
-      id,
+    const body = await request.json();
+    const {
       name,
       category,
-      description || null,
-      example_url || null,
-      fit_options || '["unisex"]',
-      active ? 1 : 0,
-      sort_order || 999,
-      now
+      description,
+      example_url,
+      sort_order,
+      tenant_id,
+    } = body;
+
+    if (!name || !category) {
+      return errorResponse("Name and category are required", 400);
+    }
+
+    const id = uuidv4();
+    const tenantId = tenant_id || "default-tenant";
+
+    await execute(
+      `INSERT INTO product_types (id, tenant_id, name, category, description, example_url, sort_order, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [id, tenantId, name, category, description || null, example_url || null, sort_order || 999]
     );
 
-    return NextResponse.json(
+    return successResponse(
       { id, message: "Product created successfully" },
-      { status: 201 }
+      201
     );
   } catch (error) {
     console.error("Error creating product:", error);
-    return NextResponse.json(
-      { error: "Failed to create product" },
-      { status: 500 }
-    );
+    return errorResponse("Failed to create product", 500);
   }
 }

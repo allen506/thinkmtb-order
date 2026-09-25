@@ -128,6 +128,28 @@ export function createSessionToken(): string {
 }
 
 /**
+ * Check if admin is authenticated via session cookie
+ */
+export async function requireAdminSession(request: NextRequest): Promise<{ error: string } | null> {
+  const token = request.cookies.get("admin-session")?.value;
+  if (!token) {
+    return { error: "Unauthorized" };
+  }
+  
+  // Verify session exists and is not expired
+  const session = await queryOne<any>(
+    "SELECT token FROM admin_sessions WHERE token = ? AND expires_at > NOW()",
+    [token]
+  );
+  
+  if (!session) {
+    return { error: "Session expired or invalid" };
+  }
+  
+  return null;
+}
+
+/**
  * Convenience exports for database operations
  */
 export { query, queryOne, execute, withTransaction };

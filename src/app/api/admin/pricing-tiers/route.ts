@@ -1,17 +1,25 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { NextRequest } from "next/server";
+import {
+  query,
+  execute,
+  errorResponse,
+  successResponse,
+  requireAdminSession,
+} from "@/lib/route-helpers";
 import { getExchangeRate, crcToUsd } from "@/lib/exchange-rate";
-import { isAdminAuthenticated, unauthorized } from '@/lib/admin-auth';
+import { v4 as uuidv4 } from "uuid";
 
-const db = getDb();
+export async function GET(request: NextRequest) {
+  const authError = await requireAdminSession(request);
+  if (authError) {
+    return errorResponse(authError.error, 401);
+  }
 
-export async function GET(req: NextRequest) {
-  if (!isAdminAuthenticated(req)) return unauthorized();
   try {
-    const { searchParams } = new URL(req.url);
+    const { searchParams } = new URL(request.url);
     const productId = searchParams.get("productId");
 
-    let query = `
+    let sql = `
       SELECT 
         id,
         product_type_id,
@@ -21,17 +29,13 @@ export async function GET(req: NextRequest) {
       FROM pricing_tiers
     `;
 
+    const tiers = productId
+      ? await query<any>(sql + " WHERE product_type_id = ? ORDER BY min_qty", [productId])
+      : await query<any>(sql + " ORDER BY product_type_id, min_qty");
+
     // Get current exchange rate
     const exchangeRate = await getExchangeRate();
     const rate = exchangeRate.compra;
-
-    let tiers: any[] = [];
-    if (productId) {
-      query += ` WHERE product_type_id = ?`;
-      tiers = db.prepare(query).all(productId) as any[];
-    } else {
-      tiers = db.prepare(query).all() as any[];
-    }
 
     // Calculate USD in real-time for each tier
     const tiersWithUSD = tiers.map((tier) => ({
@@ -39,50 +43,45 @@ export async function GET(req: NextRequest) {
       price_usd: crcToUsd(tier.price_crc, rate),
     }));
 
-    return NextResponse.json({ tiers: tiersWithUSD, exchangeRate: rate });
+    return successResponse({ tiers: tiersWithUSD, exchangeRate: rate });
   } catch (error) {
     console.error("Error fetching pricing tiers:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch pricing tiers" },
-      { status: 500 }
-    );
+    return errorResponse("Failed to fetch pricing tiers", 500);
   }
 }
 
-export async function POST(req: NextRequest) {
-  if (!isAdminAuthenticated(req)) return unauthorized();
+export async function POST(request: NextRequest) {
+  const authError = await requireAdminSession(request);
+  if (authError) {
+    return errorResponse(authError.error, 401);
+  }
+
   try {
-    const body = await req.json();
-    const { product_type_id, min_qty, max_qty, price_crc } = body;
+    const body = await request.json();
+    const { product_type_id, min_qty, max_qty, price_crc, tenant_id } = body;
 
     if (!product_type_id || min_qty === undefined || !price_crc) {
-      return NextResponse.json(
-        {
-          error: "product_type_id, min_qty, max_qty, price_crc are required",
-        },
-        { status: 400 }
+      return errorResponse(
+        "product_type_id, min_qty, price_crc are required",
+        400
       );
     }
 
-    // Note: price_usd is NOT stored. It's calculated in real-time based on current exchange rate.
-    const id = db
-      .prepare(
-        `
-      INSERT INTO pricing_tiers (product_type_id, min_qty, max_qty, price_crc, price_usd)
-      VALUES (?, ?, ?, ?, NULL)
-    `
-      )
-      .run(product_type_id, min_qty, max_qty || min_qty, price_crc).lastInsertRowid;
+    const id = uuidv4();
+    const tenantId = tenant_id || "default-tenant";
 
-    return NextResponse.json(
+    await execute(
+      `INSERT INTO pricing_tiers (id, product_type_id, tenant_id, min_qty, max_qty, price_crc, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+      [id, product_type_id, tenantId, min_qty, max_qty || min_qty, price_crc]
+    );
+
+    return successResponse(
       { id, message: "Pricing tier created successfully" },
-      { status: 201 }
+      201
     );
   } catch (error) {
     console.error("Error creating pricing tier:", error);
-    return NextResponse.json(
-      { error: "Failed to create pricing tier" },
-      { status: 500 }
-    );
+    return errorResponse("Failed to create pricing tier", 500);
   }
 }

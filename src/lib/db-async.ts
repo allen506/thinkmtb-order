@@ -240,6 +240,81 @@ async function runMigrations(client: any): Promise<void> {
       expires_at TIMESTAMP NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`,
+
+    // Admin authentication and sessions
+    `CREATE TABLE IF NOT EXISTS admin_sessions (
+      id TEXT PRIMARY KEY,
+      token TEXT UNIQUE NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      expires_at TIMESTAMP DEFAULT (NOW() + INTERVAL '24 hours')
+    )`,
+
+    // Designs
+    `CREATE TABLE IF NOT EXISTS designs (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL REFERENCES tenants(id),
+      name TEXT NOT NULL,
+      image_url TEXT,
+      description TEXT,
+      sort_order INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
+
+    // Junction table: products to designs
+    `CREATE TABLE IF NOT EXISTS product_designs (
+      id TEXT PRIMARY KEY,
+      product_type_id TEXT NOT NULL REFERENCES product_types(id),
+      design_id TEXT NOT NULL REFERENCES designs(id),
+      sort_order INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
+
+    // Sizes
+    `CREATE TABLE IF NOT EXISTS sizes (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL REFERENCES tenants(id),
+      name TEXT NOT NULL,
+      code TEXT,
+      sort_order INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
+
+    // Email configuration
+    `CREATE TABLE IF NOT EXISTS smtp_settings (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT REFERENCES tenants(id),
+      host TEXT,
+      port INTEGER,
+      username TEXT,
+      password TEXT,
+      from_email TEXT,
+      from_name TEXT,
+      use_tls BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
+
+    // Payment configuration
+    `CREATE TABLE IF NOT EXISTS payment_settings (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT REFERENCES tenants(id),
+      method TEXT,
+      is_active BOOLEAN DEFAULT TRUE,
+      config_json TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
+
+    // Admin email recipients
+    `CREATE TABLE IF NOT EXISTS admin_emails (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL REFERENCES tenants(id),
+      email TEXT NOT NULL,
+      is_active BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
   ];
 
   for (const migration of migrations) {
