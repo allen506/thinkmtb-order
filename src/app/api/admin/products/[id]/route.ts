@@ -1,57 +1,62 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
-import { isAdminAuthenticated, unauthorized } from '@/lib/admin-auth';
-
-const db = getDb();
+import { NextRequest } from "next/server";
+import {
+  query,
+  queryOne,
+  execute,
+  errorResponse,
+  successResponse,
+  requireAdminSession,
+} from "@/lib/route-helpers";
 
 export async function GET(
-  req: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!isAdminAuthenticated(req)) return unauthorized();
+  const authError = await requireAdminSession(request);
+  if (authError) {
+    return errorResponse(authError.error, 401);
+  }
+
   try {
     const { id } = await params;
-    const product = db
-      .prepare("SELECT * FROM product_types WHERE id = ?")
-      .get(id);
+    const product = await queryOne<any>(
+      "SELECT * FROM product_types WHERE id = ?",
+      [id]
+    );
 
     if (!product) {
-      return NextResponse.json(
-        { error: "Product not found" },
-        { status: 404 }
-      );
+      return errorResponse("Product not found", 404);
     }
 
-    return NextResponse.json({ product });
+    return successResponse({ product });
   } catch (error) {
     console.error("Error fetching product:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch product" },
-      { status: 500 }
-    );
+    return errorResponse("Failed to fetch product", 500);
   }
 }
 
 export async function PATCH(
-  req: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!isAdminAuthenticated(req)) return unauthorized();
+  const authError = await requireAdminSession(request);
+  if (authError) {
+    return errorResponse(authError.error, 401);
+  }
+
   try {
     const { id } = await params;
-    const body = await req.json();
+    const body = await request.json();
     const { name, category, description, example_url, fit_options, active, sort_order } =
       body;
 
     // Check if product exists
-    const existing = db
-      .prepare("SELECT id FROM product_types WHERE id = ?")
-      .get(id);
+    const existing = await queryOne(
+      "SELECT id FROM product_types WHERE id = ?",
+      [id]
+    );
     if (!existing) {
-      return NextResponse.json(
-        { error: "Product not found" },
-        { status: 404 }
-      );
+      return errorResponse("Product not found", 404);
     }
 
     // Build update query dynamically
@@ -88,62 +93,52 @@ export async function PATCH(
     }
 
     if (updates.length === 0) {
-      return NextResponse.json(
-        { error: "No fields to update" },
-        { status: 400 }
-      );
+      return errorResponse("No fields to update", 400);
     }
 
     values.push(id);
-    const query = `UPDATE product_types SET ${updates.join(", ")} WHERE id = ?`;
-    db.prepare(query).run(...values);
+    const sql = `UPDATE product_types SET ${updates.join(", ")} WHERE id = ?`;
+    await execute(sql, values);
 
-    return NextResponse.json({ message: "Product updated successfully" });
+    return successResponse({ message: "Product updated successfully" });
   } catch (error) {
     console.error("Error updating product:", error);
-    return NextResponse.json(
-      { error: "Failed to update product" },
-      { status: 500 }
-    );
+    return errorResponse("Failed to update product", 500);
   }
 }
 
 export async function DELETE(
-  req: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!isAdminAuthenticated(req)) return unauthorized();
+  const authError = await requireAdminSession(request);
+  if (authError) {
+    return errorResponse(authError.error, 401);
+  }
+
   try {
     const { id } = await params;
 
     // Check if product has orders
-    const orders = db
-      .prepare(
-        "SELECT COUNT(*) as count FROM order_items WHERE product_type_id = ?"
-      )
-      .get(id) as { count: number };
+    const orders = await queryOne<{ count: number }>(
+      "SELECT COUNT(*) as count FROM order_items WHERE product_type_id = ?",
+      [id]
+    );
 
-    if (orders.count > 0) {
-      return NextResponse.json(
-        {
-          error: `Cannot delete product with ${orders.count} existing orders`,
-        },
-        { status: 400 }
+    if (orders && orders.count > 0) {
+      return errorResponse(
+        `Cannot delete product with ${orders.count} existing orders`,
+        400
       );
     }
 
-    // Delete pricing tiers
-    db.prepare("DELETE FROM pricing_tiers WHERE product_type_id = ?").run(id);
+    // Delete pricing tiers and product
+    await execute("DELETE FROM pricing_tiers WHERE product_type_id = ?", [id]);
+    await execute("DELETE FROM product_types WHERE id = ?", [id]);
 
-    // Delete product
-    db.prepare("DELETE FROM product_types WHERE id = ?").run(id);
-
-    return NextResponse.json({ message: "Product deleted successfully" });
+    return successResponse({ message: "Product deleted successfully" });
   } catch (error) {
     console.error("Error deleting product:", error);
-    return NextResponse.json(
-      { error: "Failed to delete product" },
-      { status: 500 }
-    );
+    return errorResponse("Failed to delete product", 500);
   }
 }

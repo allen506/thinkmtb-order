@@ -1,6 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
-import { isAdminAuthenticated, unauthorized } from "@/lib/admin-auth";
+import { NextRequest } from "next/server";
+import {
+  queryOne,
+  errorResponse,
+  successResponse,
+  requireAdminSession,
+} from "@/lib/route-helpers";
 import nodemailer from "nodemailer";
 
 interface SMTPSettings {
@@ -13,22 +17,24 @@ interface SMTPSettings {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isAdminAuthenticated(request)) {
-    return unauthorized();
+  const authError = await requireAdminSession(request);
+  if (authError) {
+    return errorResponse(authError.error, 401);
   }
 
   try {
-    const db = getDb();
-    const settings = db.prepare("SELECT * FROM smtp_settings WHERE id = 1").get() as SMTPSettings | undefined;
+    const settings = await queryOne<SMTPSettings>(
+      "SELECT * FROM smtp_settings WHERE id = 1"
+    );
 
     if (!settings) {
-      return NextResponse.json({ error: "SMTP settings not configured" }, { status: 400 });
+      return errorResponse("SMTP settings not configured", 400);
     }
 
     // Get the test email address from the request
     const { testEmail } = await request.json();
     if (!testEmail) {
-      return NextResponse.json({ error: "Test email address required" }, { status: 400 });
+      return errorResponse("Test email address required", 400);
     }
 
     // Create transporter
@@ -69,12 +75,12 @@ export async function POST(request: NextRequest) {
       `,
     });
 
-    return NextResponse.json({ success: true, message: "Test email sent successfully!" });
+    return successResponse({ success: true, message: "Test email sent successfully!" });
   } catch (error: any) {
     console.error("SMTP test error:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to send test email" },
-      { status: 500 }
+    return errorResponse(
+      error.message || "Failed to send test email",
+      500
     );
   }
 }

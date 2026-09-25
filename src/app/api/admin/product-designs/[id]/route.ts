@@ -1,40 +1,39 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
-import { isAdminAuthenticated, unauthorized } from '@/lib/admin-auth';
-
-const db = getDb();
+import { NextRequest } from "next/server";
+import {
+  queryOne,
+  execute,
+  errorResponse,
+  successResponse,
+  requireAdminSession,
+} from "@/lib/route-helpers";
 
 export async function DELETE(
-  req: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!isAdminAuthenticated(req)) return unauthorized();
+  const authError = await requireAdminSession(request);
+  if (authError) {
+    return errorResponse(authError.error, 401);
+  }
+
   try {
     const { id } = await params;
-    const idNum = parseInt(id);
 
     // Check if association exists
-    const existing = db
-      .prepare("SELECT id FROM product_designs WHERE id = ?")
-      .get(idNum);
+    const existing = await queryOne(
+      "SELECT id FROM product_designs WHERE id = ?",
+      [id]
+    );
 
     if (!existing) {
-      return NextResponse.json(
-        { error: "Association not found" },
-        { status: 404 }
-      );
+      return errorResponse("Association not found", 404);
     }
 
-    db.prepare("DELETE FROM product_designs WHERE id = ?").run(idNum);
+    await execute("DELETE FROM product_designs WHERE id = ?", [id]);
 
-    return NextResponse.json({
-      message: "Association deleted successfully",
-    });
+    return successResponse({ message: "Association deleted successfully" });
   } catch (error) {
     console.error("Error deleting product-design association:", error);
-    return NextResponse.json(
-      { error: "Failed to delete association" },
-      { status: 500 }
-    );
+    return errorResponse("Failed to delete association", 500);
   }
 }

@@ -1,19 +1,26 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
-import { isAdminAuthenticated, unauthorized } from "@/lib/admin-auth";
+import { NextRequest } from "next/server";
+import {
+  queryOne,
+  execute,
+  errorResponse,
+  successResponse,
+  requireAdminSession,
+} from "@/lib/route-helpers";
 
 // GET SMTP settings
 export async function GET(request: NextRequest) {
-  if (!isAdminAuthenticated(request)) {
-    return unauthorized();
+  const authError = await requireAdminSession(request);
+  if (authError) {
+    return errorResponse(authError.error, 401);
   }
 
   try {
-    const db = getDb();
-    const settings = db.prepare("SELECT host, port, secure, username, from_email FROM smtp_settings WHERE id = 1").get();
-    
+    const settings = await queryOne<any>(
+      "SELECT host, port, secure, username, from_email FROM smtp_settings WHERE id = 1"
+    );
+
     if (!settings) {
-      return NextResponse.json({
+      return successResponse({
         host: "",
         port: 587,
         secure: false,
@@ -22,48 +29,52 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    return NextResponse.json(settings);
+    return successResponse(settings);
   } catch (error) {
     console.error("Error fetching SMTP settings:", error);
-    return NextResponse.json({ error: "Failed to fetch settings" }, { status: 500 });
+    return errorResponse("Failed to fetch settings", 500);
   }
 }
 
 // POST/PATCH SMTP settings
 export async function POST(request: NextRequest) {
-  if (!isAdminAuthenticated(request)) {
-    return unauthorized();
+  const authError = await requireAdminSession(request);
+  if (authError) {
+    return errorResponse(authError.error, 401);
   }
 
   try {
     const { host, port, secure, username, password, from_email } = await request.json();
 
     if (!host || !port || !username || !password || !from_email) {
-      return NextResponse.json(
-        { error: "All SMTP fields are required" },
-        { status: 400 }
+      return errorResponse(
+        "All SMTP fields are required",
+        400
       );
     }
 
-    const db = getDb();
-    const existing = db.prepare("SELECT id FROM smtp_settings WHERE id = 1").get();
+    const existing = await queryOne(
+      "SELECT id FROM smtp_settings WHERE id = 1"
+    );
 
     if (existing) {
-      db.prepare(`
-        UPDATE smtp_settings 
-        SET host = ?, port = ?, secure = ?, username = ?, password = ?, from_email = ?
-        WHERE id = 1
-      `).run(host, port, secure ? 1 : 0, username, password, from_email);
+      await execute(
+        `UPDATE smtp_settings 
+         SET host = ?, port = ?, secure = ?, username = ?, password = ?, from_email = ?, updated_at = NOW()
+         WHERE id = 1`,
+        [host, port, secure ? 1 : 0, username, password, from_email]
+      );
     } else {
-      db.prepare(`
-        INSERT INTO smtp_settings (id, host, port, secure, username, password, from_email)
-        VALUES (1, ?, ?, ?, ?, ?, ?)
-      `).run(host, port, secure ? 1 : 0, username, password, from_email);
+      await execute(
+        `INSERT INTO smtp_settings (id, host, port, secure, username, password, from_email, created_at)
+         VALUES (1, ?, ?, ?, ?, ?, ?, NOW())`,
+        [host, port, secure ? 1 : 0, username, password, from_email]
+      );
     }
 
-    return NextResponse.json({ message: "SMTP settings saved successfully" });
+    return successResponse({ message: "SMTP settings saved successfully" });
   } catch (error) {
     console.error("Error saving SMTP settings:", error);
-    return NextResponse.json({ error: "Failed to save settings" }, { status: 500 });
+    return errorResponse("Failed to save settings", 500);
   }
 }

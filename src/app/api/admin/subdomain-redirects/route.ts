@@ -1,10 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from "next/server";
 import {
-  getSubdomainRedirect,
-  setSubdomainRedirect,
-  getAllSubdomainRedirects,
-  deleteSubdomainRedirect
-} from '@/lib/tenant';
+  query,
+  queryOne,
+  execute,
+  errorResponse,
+  successResponse,
+  requireAdminSession,
+} from "@/lib/route-helpers";
+import { v4 as uuidv4 } from "uuid";
 
 /**
  * Admin endpoint for managing subdomain redirects
@@ -14,113 +17,152 @@ import {
  */
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminSession(request);
+  if (authError) {
+    return errorResponse(authError.error, 401);
+  }
+
   try {
-    // TODO: Add authentication check
-    
-    const redirects = getAllSubdomainRedirects();
-    return NextResponse.json({ success: true, redirects });
+    const redirects = await query<any>(
+      "SELECT * FROM subdomain_redirects ORDER BY subdomain ASC"
+    );
+    return successResponse({ success: true, redirects });
   } catch (error) {
-    return NextResponse.json(
-      { error: 'Failed to fetch redirects', details: String(error) },
-      { status: 500 }
+    return errorResponse(
+      `Failed to fetch redirects: ${String(error)}`,
+      500
     );
   }
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminSession(request);
+  if (authError) {
+    return errorResponse(authError.error, 401);
+  }
+
   try {
-    // TODO: Add authentication check
-    
     const body = await request.json();
     const { subdomain, redirect_url, is_team_portal, tenant_id, team_password } = body;
 
     if (!subdomain || !redirect_url) {
-      return NextResponse.json(
-        { error: 'Missing required fields: subdomain, redirect_url' },
-        { status: 400 }
+      return errorResponse(
+        "Missing required fields: subdomain, redirect_url",
+        400
       );
     }
 
     // Validate subdomain format
     if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(subdomain)) {
-      return NextResponse.json(
-        { error: 'Invalid subdomain format. Use lowercase letters, numbers, and hyphens only.' },
-        { status: 400 }
+      return errorResponse(
+        "Invalid subdomain format. Use lowercase letters, numbers, and hyphens only.",
+        400
       );
     }
 
     // Don't allow reserved subdomains
-    if (['www', 'mail', 'ftp', 'ns', 'admin', 'cmsadmin'].includes(subdomain)) {
-      return NextResponse.json(
-        { error: 'Reserved subdomain. Please choose a different name.' },
-        { status: 400 }
-      );
+    if (["www", "mail", "ftp", "ns", "admin", "cmsadmin"].includes(subdomain)) {
+      return errorResponse("Reserved subdomain. Please choose a different name.", 400);
     }
 
     // If it's a team portal, make sure it has the required fields
-    if (is_team_portal) {
-      if (!tenant_id) {
-        return NextResponse.json(
-          { error: 'Team portals must have a tenant_id' },
-          { status: 400 }
-        );
-      }
-      // team_password is optional for team portals
+    if (is_team_portal && !tenant_id) {
+      return errorResponse("Team portals must have a tenant_id", 400);
     }
 
-    const redirect = setSubdomainRedirect(
-      subdomain,
-      redirect_url,
-      is_team_portal || false,
-      tenant_id || null,
-      team_password || null
+    // Check if subdomain already exists
+    const existing = await queryOne(
+      "SELECT id FROM subdomain_redirects WHERE subdomain = ?",
+      [subdomain]
     );
 
-    return NextResponse.json({
-      success: true,
-      message: `Subdomain '${subdomain}' configured successfully`,
-      redirect
-    });
+    const id = existing?.id || uuidv4();
+
+    if (existing) {
+      await execute(
+        `UPDATE subdomain_redirects 
+         SET redirect_url = ?, is_team_portal = ?, tenant_id = ?, team_password = ?, updated_at = NOW()
+         WHERE id = ?`,
+        [
+          redirect_url,
+          is_team_portal ? 1 : 0,
+          tenant_id || null,
+          team_password || null,
+          id,
+        ]
+      );
+    } else {
+      await execute(
+        `INSERT INTO subdomain_redirects (id, subdomain, redirect_url, is_team_portal, tenant_id, team_password, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+        [
+          id,
+          subdomain,
+          redirect_url,
+          is_team_portal ? 1 : 0,
+          tenant_id || null,
+          team_password || null,
+        ]
+      );
+    }
+
+    const redirect = await queryOne(
+      "SELECT * FROM subdomain_redirects WHERE id = ?",
+      [id]
+    );
+
+    return successResponse(
+      {
+        success: true,
+        message: `Subdomain '${subdomain}' configured successfully`,
+        redirect,
+      },
+      201
+    );
   } catch (error) {
-    return NextResponse.json(
-      { error: 'Failed to create redirect', details: String(error) },
-      { status: 500 }
+    return errorResponse(
+      `Failed to create redirect: ${String(error)}`,
+      500
     );
   }
 }
 
 export async function DELETE(request: NextRequest) {
+  const authError = await requireAdminSession(request);
+  if (authError) {
+    return errorResponse(authError.error, 401);
+  }
+
   try {
-    // TODO: Add authentication check
-    
     const body = await request.json();
     const { subdomain } = body;
 
     if (!subdomain) {
-      return NextResponse.json(
-        { error: 'Missing required field: subdomain' },
-        { status: 400 }
-      );
+      return errorResponse("Subdomain is required", 400);
     }
 
-    const existing = getSubdomainRedirect(subdomain);
-    if (!existing) {
-      return NextResponse.json(
-        { error: 'Subdomain not found' },
-        { status: 404 }
-      );
+    const redirect = await queryOne(
+      "SELECT * FROM subdomain_redirects WHERE subdomain = ?",
+      [subdomain]
+    );
+
+    if (!redirect) {
+      return errorResponse(`Subdomain '${subdomain}' not found`, 404);
     }
 
-    deleteSubdomainRedirect(subdomain);
+    await execute(
+      "DELETE FROM subdomain_redirects WHERE subdomain = ?",
+      [subdomain]
+    );
 
-    return NextResponse.json({
+    return successResponse({
       success: true,
-      message: `Subdomain '${subdomain}' deleted successfully`
+      message: `Subdomain '${subdomain}' deleted successfully`,
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: 'Failed to delete redirect', details: String(error) },
-      { status: 500 }
+    return errorResponse(
+      `Failed to delete redirect: ${String(error)}`,
+      500
     );
   }
 }

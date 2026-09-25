@@ -1,31 +1,39 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
-import { isAdminAuthenticated, unauthorized } from "@/lib/admin-auth";
+import { NextRequest } from "next/server";
+import {
+  queryOne,
+  execute,
+  errorResponse,
+  successResponse,
+  requireAdminSession,
+} from "@/lib/route-helpers";
 
 // DELETE admin email
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!isAdminAuthenticated(request)) {
-    return unauthorized();
+  const authError = await requireAdminSession(request);
+  if (authError) {
+    return errorResponse(authError.error, 401);
   }
 
   try {
     const { id } = await params;
-    const db = getDb();
 
-    const email = db.prepare("SELECT email FROM admin_emails WHERE id = ?").get(id) as { email: string } | undefined;
+    const email = await queryOne<{ email: string }>(
+      "SELECT email FROM admin_emails WHERE id = ?",
+      [id]
+    );
 
     if (!email) {
-      return NextResponse.json({ error: "Email not found" }, { status: 404 });
+      return errorResponse("Email not found", 404);
     }
 
-    db.prepare("DELETE FROM admin_emails WHERE id = ?").run(id);
+    await execute("DELETE FROM admin_emails WHERE id = ?", [id]);
 
-    return NextResponse.json({ message: "Email deleted successfully" });
+    return successResponse({ message: "Email deleted successfully" });
   } catch (error) {
     console.error("Error deleting admin email:", error);
-    return NextResponse.json({ error: "Failed to delete email" }, { status: 500 });
+    return errorResponse("Failed to delete email", 500);
   }
 }

@@ -1,30 +1,33 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
-import { getExchangeRate, crcToUsd } from "@/lib/exchange-rate";
-import { isAdminAuthenticated, unauthorized } from '@/lib/admin-auth';
-
-const db = getDb();
+import { NextRequest } from "next/server";
+import {
+  queryOne,
+  execute,
+  errorResponse,
+  successResponse,
+  requireAdminSession,
+} from "@/lib/route-helpers";
 
 export async function PATCH(
-  req: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!isAdminAuthenticated(req)) return unauthorized();
+  const authError = await requireAdminSession(request);
+  if (authError) {
+    return errorResponse(authError.error, 401);
+  }
+
   try {
     const { id } = await params;
-    const idNum = parseInt(id);
-    const body = await req.json();
+    const body = await request.json();
     const { min_qty, max_qty, price_crc } = body;
 
     // Check if tier exists
-    const existing = db
-      .prepare("SELECT id FROM pricing_tiers WHERE id = ?")
-      .get(idNum);
+    const existing = await queryOne(
+      "SELECT id FROM pricing_tiers WHERE id = ?",
+      [id]
+    );
     if (!existing) {
-      return NextResponse.json(
-        { error: "Pricing tier not found" },
-        { status: 404 }
-      );
+      return errorResponse("Pricing tier not found", 404);
     }
 
     // Build update query
@@ -44,48 +47,36 @@ export async function PATCH(
       values.push(price_crc);
     }
 
-    // Note: price_usd is NOT updated. It's calculated in real-time based on current exchange rate.
-
     if (updates.length === 0) {
-      return NextResponse.json(
-        { error: "No fields to update" },
-        { status: 400 }
-      );
+      return errorResponse("No fields to update", 400);
     }
 
-    values.push(idNum);
-    const query = `UPDATE pricing_tiers SET ${updates.join(", ")} WHERE id = ?`;
-    db.prepare(query).run(...values);
+    values.push(id);
+    const sql = `UPDATE pricing_tiers SET ${updates.join(", ")} WHERE id = ?`;
+    await execute(sql, values);
 
-    return NextResponse.json({ message: "Pricing tier updated successfully" });
+    return successResponse({ message: "Pricing tier updated successfully" });
   } catch (error) {
     console.error("Error updating pricing tier:", error);
-    return NextResponse.json(
-      { error: "Failed to update pricing tier" },
-      { status: 500 }
-    );
+    return errorResponse("Failed to update pricing tier", 500);
   }
 }
 
 export async function DELETE(
-  req: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!isAdminAuthenticated(req)) return unauthorized();
+  const authError = await requireAdminSession(request);
+  if (authError) {
+    return errorResponse(authError.error, 401);
+  }
+
   try {
     const { id } = await params;
-    const idNum = parseInt(id);
-
-    db.prepare("DELETE FROM pricing_tiers WHERE id = ?").run(idNum);
-
-    return NextResponse.json({
-      message: "Pricing tier deleted successfully",
-    });
+    await execute("DELETE FROM pricing_tiers WHERE id = ?", [id]);
+    return successResponse({ message: "Pricing tier deleted successfully" });
   } catch (error) {
     console.error("Error deleting pricing tier:", error);
-    return NextResponse.json(
-      { error: "Failed to delete pricing tier" },
-      { status: 500 }
-    );
+    return errorResponse("Failed to delete pricing tier", 500);
   }
 }

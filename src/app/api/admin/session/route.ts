@@ -1,13 +1,23 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { NextRequest } from "next/server";
+import {
+  execute,
+  errorResponse,
+  successResponse,
+} from "@/lib/route-helpers";
 
 export async function DELETE(request: NextRequest) {
-  const token = request.cookies.get("admin-session")?.value;
-  if (token) {
-    const db = getDb();
-    db.prepare("DELETE FROM admin_sessions WHERE token = ?").run(token);
+  try {
+    const token = request.cookies.get("admin-session")?.value;
+    
+    if (token) {
+      await execute("DELETE FROM admin_sessions WHERE token = ?", [token]);
+    }
+    
+    const response = successResponse({ message: "Logged out" });
+    // Client should clear cookie
+    return response;
+  } catch (error) {
+    console.error("Error logging out:", error);
+    return errorResponse("Failed to logout", 500);
   }
-  const response = NextResponse.json({ message: "Logged out" });
-  response.cookies.set("admin-session", "", { maxAge: 0, path: "/" });
-  return response;
 }

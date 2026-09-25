@@ -1,57 +1,65 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { NextRequest } from "next/server";
+import {
+  queryOne,
+  execute,
+  errorResponse,
+  successResponse,
+  requireAdminSession,
+  withTransaction,
+} from "@/lib/route-helpers";
 import { writeFileSync, mkdirSync, unlinkSync } from "fs";
 import path from "path";
-import { isAdminAuthenticated, unauthorized } from '@/lib/admin-auth';
 
-const db = getDb();
 const UPLOAD_DIR = path.join(process.cwd(), "public/designs");
 mkdirSync(UPLOAD_DIR, { recursive: true });
 
 export async function GET(
-  req: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!isAdminAuthenticated(req)) return unauthorized();
+  const authError = await requireAdminSession(request);
+  if (authError) {
+    return errorResponse(authError.error, 401);
+  }
+
   try {
     const { id } = await params;
-    const design = db
-      .prepare("SELECT * FROM designs WHERE id = ?")
-      .get(id);
+    const design = await queryOne<any>(
+      "SELECT * FROM designs WHERE id = ?",
+      [id]
+    );
 
     if (!design) {
-      return NextResponse.json(
-        { error: "Design not found" },
-        { status: 404 }
-      );
+      return errorResponse("Design not found", 404);
     }
 
-    return NextResponse.json({ design });
+    return successResponse({ design });
   } catch (error) {
     console.error("Error fetching design:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch design" },
-      { status: 500 }
-    );
+    return errorResponse("Failed to fetch design", 500);
   }
 }
 
 export async function PATCH(
-  req: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!isAdminAuthenticated(req)) return unauthorized();
+  const authError = await requireAdminSession(request);
+  if (authError) {
+    return errorResponse(authError.error, 401);
+  }
+
   try {
     const { id } = await params;
-    const contentType = req.headers.get("content-type");
+    const contentType = request.headers.get("content-type");
     let body: Record<string, any> = {};
     let file: File | null = null;
 
     // Handle both JSON and FormData
     if (contentType?.includes("application/json")) {
-      body = await req.json();
+      body = await request.json();
     } else if (contentType?.includes("multipart/form-data")) {
-      const formData = await req.formData();
+      const formData = await request.formData();
       body.name = formData.get("name") as string;
       body.description = formData.get("description") as string;
       body.active = formData.get("active") === "true" ? 1 : 0;
@@ -63,12 +71,13 @@ export async function PATCH(
     }
 
     // Check if design exists
-    const existing = db.prepare("SELECT * FROM designs WHERE id = ?").get(id) as any;
+    const existing = await queryOne<any>(
+      "SELECT * FROM designs WHERE id = ?",
+      [id]
+    );
+
     if (!existing) {
-      return NextResponse.json(
-        { error: "Design not found" },
-        { status: 404 }
-      );
+      return errorResponse("Design not found", 404);
     }
 
     const updates = [];
@@ -99,27 +108,20 @@ export async function PATCH(
     if (file) {
       const validTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
       if (!validTypes.includes(file.type)) {
-        return NextResponse.json(
-          { error: "Invalid file type. Only JPEG, PNG, WebP, GIF allowed." },
-          { status: 400 }
+        return errorResponse(
+          "Invalid file type. Only JPEG, PNG, WebP, GIF allowed.",
+          400
         );
       }
 
       if (file.size > 5 * 1024 * 1024) {
-        return NextResponse.json(
-          { error: "File too large. Max 5MB." },
-          { status: 400 }
-        );
+        return errorResponse("File too large. Max 5MB.", 400);
       }
 
       // Delete old image if exists
       if (existing.image_url) {
         try {
-          const oldFilepath = path.join(
-            process.cwd(),
-            "public",
-            existing.image_url
-          );
+          const oldFilepath = path.join(process.cwd(), "public", existing.image_url);
           unlinkSync(oldFilepath);
         } catch {
           // File may not exist
@@ -129,7 +131,12 @@ export async function PATCH(
       // Save new image
       const buffer = await file.arrayBuffer();
       const timestamp = Date.now();
-      const filename = `design-${timestamp}-${body.name?.toLowerCase().replace(/\s+/g, "-").substring(0, 20) || "unknown"}.${file.type.split("/")[1]}`;
+      const filename = `design-${timestamp}-${(
+        body.name || "unknown"
+      )
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+        .substring(0, 20)}.${file.type.split("/")[1]}`;
       const filepath = path.join(UPLOAD_DIR, filename);
 
       writeFileSync(filepath, Buffer.from(buffer));
@@ -139,60 +146,61 @@ export async function PATCH(
     }
 
     if (updates.length === 0) {
-      return NextResponse.json(
-        { error: "No fields to update" },
-        { status: 400 }
-      );
+      return errorResponse("No fields to update", 400);
     }
 
+    updates.push("updated_at = NOW()");
     values.push(id);
-    const query = `UPDATE designs SET ${updates.join(", ")} WHERE id = ?`;
-    db.prepare(query).run(...values);
+    const sql = `UPDATE designs SET ${updates.join(", ")} WHERE id = ?`;
+    await execute(sql, values);
 
-    return NextResponse.json({ message: "Design updated successfully" });
+    return successResponse({ message: "Design updated successfully" });
   } catch (error) {
     console.error("Error updating design:", error);
-    return NextResponse.json(
-      { error: "Failed to update design" },
-      { status: 500 }
-    );
+    return errorResponse("Failed to update design", 500);
   }
 }
 
 export async function DELETE(
-  req: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!isAdminAuthenticated(req)) return unauthorized();
+  const authError = await requireAdminSession(request);
+  if (authError) {
+    return errorResponse(authError.error, 401);
+  }
+
   try {
     const { id } = await params;
 
-    // Check if design has orders
-    const orders = db
-      .prepare("SELECT COUNT(*) as count FROM order_items WHERE design_id = ?")
-      .get(id) as { count: number };
+    // Check if design has order items
+    const orders = await queryOne<{ count: number }>(
+      "SELECT COUNT(*) as count FROM order_items WHERE design_id = ?",
+      [id]
+    );
 
-    if (orders.count > 0) {
-      return NextResponse.json(
-        {
-          error: `Cannot delete design with ${orders.count} existing orders`,
-        },
-        { status: 400 }
+    if (orders && orders.count > 0) {
+      return errorResponse(
+        `Cannot delete design with ${orders.count} existing orders`,
+        400
       );
     }
 
     // Get design to find image
-    const design = db.prepare("SELECT image_url FROM designs WHERE id = ?").get(id) as any;
+    const design = await queryOne<any>(
+      "SELECT image_url FROM designs WHERE id = ?",
+      [id]
+    );
 
     if (!design) {
-      return NextResponse.json({ error: "Design not found" }, { status: 404 });
+      return errorResponse("Design not found", 404);
     }
 
     // Delete in a transaction: child records first, then the design
-    db.transaction(() => {
-      db.prepare("DELETE FROM product_designs WHERE design_id = ?").run(id);
-      db.prepare("DELETE FROM designs WHERE id = ?").run(id);
-    })();
+    await withTransaction(async (client) => {
+      await execute("DELETE FROM product_designs WHERE design_id = ?", [id]);
+      await execute("DELETE FROM designs WHERE id = ?", [id]);
+    });
 
     // Delete the image file after the DB transaction succeeds
     if (design.image_url) {
@@ -204,12 +212,9 @@ export async function DELETE(
       }
     }
 
-    return NextResponse.json({ message: "Design deleted successfully" });
+    return successResponse({ message: "Design deleted successfully" });
   } catch (error) {
     console.error("Error deleting design:", error);
-    return NextResponse.json(
-      { error: "Failed to delete design" },
-      { status: 500 }
-    );
+    return errorResponse("Failed to delete design", 500);
   }
 }

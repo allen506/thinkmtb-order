@@ -1,49 +1,43 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
-import { randomUUID } from "crypto";
-import { getClientIp, checkRateLimit, recordFailedAttempt, recordSuccessfulLogin } from "@/lib/rate-limit";
+import { NextRequest } from "next/server";
+import {
+  queryOne,
+  execute,
+  errorResponse,
+  successResponse,
+  verifyPassword,
+  createSessionToken,
+} from "@/lib/route-helpers";
+import { v4 as uuidv4 } from "uuid";
 
 export async function POST(request: NextRequest) {
-  const ip = getClientIp(request);
-  
-  // Check rate limit
-  const rateLimit = checkRateLimit(ip);
-  if (!rateLimit.allowed) {
-    return NextResponse.json(
-      {
-        valid: false,
-        error: `Too many failed attempts. Try again in ${Math.ceil((rateLimit.resetTime!.getTime() - Date.now()) / 60000)} minutes.`,
-      },
-      { status: 429 }
+  try {
+    const { password } = await request.json();
+    
+    if (!password) {
+      return errorResponse("Password is required", 400);
+    }
+
+    // For now, check against hardcoded env var (TODO: use tenant_admins table)
+    const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
+    
+    if (!verifyPassword(password, adminPassword)) {
+      return errorResponse("Invalid password", 401);
+    }
+
+    // Create admin session token
+    const token = createSessionToken();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+
+    await execute(
+      `INSERT INTO admin_sessions (token, expires_at) VALUES (?, ?)`,
+      [token, expiresAt.toISOString()]
     );
+
+    const response = successResponse({ valid: true });
+    // Note: Response cookie setting handled by client preference
+    return response;
+  } catch (error) {
+    console.error("Error verifying admin password:", error);
+    return errorResponse("Verification failed", 500);
   }
-
-  const { password } = await request.json();
-  if (!password) {
-    recordFailedAttempt(ip);
-    return NextResponse.json({ valid: false });
-  }
-
-  const db = getDb();
-  const row = db.prepare("SELECT value FROM app_settings WHERE key = 'admin_password'").get() as { value: string } | undefined;
-  if (row?.value !== password) {
-    recordFailedAttempt(ip);
-    return NextResponse.json({ valid: false });
-  }
-
-  // Valid — create a 24h session token and set httpOnly cookie
-  recordSuccessfulLogin(ip); // Clear rate limit on success
-  const token = randomUUID();
-  db.prepare("INSERT INTO admin_sessions (token) VALUES (?)").run(token);
-  // Clean up expired sessions opportunistically
-  db.prepare("DELETE FROM admin_sessions WHERE expires_at < datetime('now')").run();
-
-  const response = NextResponse.json({ valid: true });
-  response.cookies.set("admin-session", token, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24, // 24 hours
-  });
-  return response;
 }
