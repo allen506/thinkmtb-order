@@ -619,7 +619,7 @@ function seedData(db: Database.Database) {
 export function initializeDatabase(): void {
   console.log(`🔧 [initializeDatabase] Starting initialization check...`);
   console.log(`🔧 [initializeDatabase] NODE_ENV=${process.env.NODE_ENV}, buildMode=${buildMode}`);
-  console.log(`🔧 [initializeDatabase] usePostgres=${usePostgres}`);
+  console.log(`🔧 [initializeDatabase] DATABASE_URL=${process.env.DATABASE_URL ? '***set***' : 'not set'}`);
   
   // Only initialize during runtime, not during build
   if (process.env.NEXT_PHASE === 'phase-production-build' || buildMode) {
@@ -627,8 +627,9 @@ export function initializeDatabase(): void {
     return;
   }
   
-  if (usePostgres) {
-    console.log(`🔧 [initializeDatabase] Using PostgreSQL - initializing async...`);
+  // Check at runtime if using PostgreSQL
+  if (process.env.DATABASE_URL) {
+    console.log(`🔧 [initializeDatabase] PostgreSQL detected - initializing async...`);
     // For PostgreSQL, we need async initialization
     // This will be called from an async context
     initializePostgres();
@@ -636,7 +637,7 @@ export function initializeDatabase(): void {
   }
   
   try {
-    console.log(`🔧 [initializeDatabase] Calling getDb()...`);
+    console.log(`🔧 [initializeDatabase] Using SQLite - calling getDb()...`);
     const database = getDb();
     console.log(`🔧 [initializeDatabase] getDb() returned successfully`);
     
