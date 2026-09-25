@@ -619,10 +619,19 @@ function seedData(db: Database.Database) {
 export function initializeDatabase(): void {
   console.log(`🔧 [initializeDatabase] Starting initialization check...`);
   console.log(`🔧 [initializeDatabase] NODE_ENV=${process.env.NODE_ENV}, buildMode=${buildMode}`);
+  console.log(`🔧 [initializeDatabase] usePostgres=${usePostgres}`);
   
   // Only initialize during runtime, not during build
   if (process.env.NEXT_PHASE === 'phase-production-build' || buildMode) {
     console.log(`🔧 [initializeDatabase] Skipping - build phase detected`);
+    return;
+  }
+  
+  if (usePostgres) {
+    console.log(`🔧 [initializeDatabase] Using PostgreSQL - initializing async...`);
+    // For PostgreSQL, we need async initialization
+    // This will be called from an async context
+    initializePostgres();
     return;
   }
   
@@ -636,5 +645,18 @@ export function initializeDatabase(): void {
     console.log(`✅ Database initialized with ${tenantCount} tenant(s)`);
   } catch (error) {
     console.error('⚠️ [initializeDatabase] Check failed:', error);
+  }
+}
+
+/**
+ * PostgreSQL async initialization
+ */
+async function initializePostgres(): Promise<void> {
+  try {
+    const { initializeDbAsync } = require('./db-pg');
+    await initializeDbAsync();
+    console.log("✅ PostgreSQL database initialized");
+  } catch (error) {
+    console.error("❌ PostgreSQL initialization failed:", error);
   }
 }
