@@ -380,19 +380,8 @@ export async function query<T extends QueryResultRow = any>(
 ): Promise<T[]> {
   const pool = await initPostgres();
   const pgSql = convertSqliteToPg(sql);
-  console.log("🔍 DB Query - Original SQL:", sql);
-  console.log("🔍 DB Query - Converted SQL:", pgSql);
-  console.log("🔍 DB Query - Params:", params);
-  try {
-    const result = await pool.query(pgSql, params);
-    console.log("✅ Query successful, rows:", result.rows.length);
-    return result.rows as T[];
-  } catch (error: any) {
-    console.error("❌ Query failed - SQL:", pgSql);
-    console.error("❌ Query failed - Error message:", error.message);
-    console.error("❌ Query failed - Error code:", error.code);
-    throw error;
-  }
+  const result = await pool.query(pgSql, params);
+  return result.rows as T[];
 }
 
 /**
