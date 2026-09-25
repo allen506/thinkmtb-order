@@ -627,12 +627,10 @@ export function initializeDatabase(): void {
     return;
   }
   
-  // Check at runtime if using PostgreSQL
+  // When using PostgreSQL, initialization happens on-demand during request time
+  // via db-async.ts pool initialization
   if (process.env.DATABASE_URL) {
-    console.log(`🔧 [initializeDatabase] PostgreSQL detected - initializing async...`);
-    // For PostgreSQL, we need async initialization
-    // This will be called from an async context
-    initializePostgres();
+    console.log(`🔧 [initializeDatabase] PostgreSQL detected - pool will initialize on first request`);
     return;
   }
   
@@ -646,18 +644,5 @@ export function initializeDatabase(): void {
     console.log(`✅ Database initialized with ${tenantCount} tenant(s)`);
   } catch (error) {
     console.error('⚠️ [initializeDatabase] Check failed:', error);
-  }
-}
-
-/**
- * PostgreSQL async initialization
- */
-async function initializePostgres(): Promise<void> {
-  try {
-    const { initializeDbAsync } = require('./db-pg');
-    await initializeDbAsync();
-    console.log("✅ PostgreSQL database initialized");
-  } catch (error) {
-    console.error("❌ PostgreSQL initialization failed:", error);
   }
 }
