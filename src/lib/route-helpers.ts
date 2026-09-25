@@ -94,6 +94,40 @@ export async function mutationHandler(
 }
 
 /**
+ * Platform admin authentication check
+ */
+export function requirePlatformAdmin(request: NextRequest): { error: string } | null {
+  const token = request.cookies.get("platform_admin_token");
+  if (!token) {
+    return { error: "Unauthorized" };
+  }
+  return null;
+}
+
+/**
+ * Hash password for storage
+ */
+export function hashPassword(password: string): string {
+  const crypto = require("crypto");
+  return crypto.createHash("sha256").update(password).digest("hex");
+}
+
+/**
+ * Verify password against hash
+ */
+export function verifyPassword(password: string, hash: string): boolean {
+  return hashPassword(password) === hash;
+}
+
+/**
+ * Create secure session cookie token
+ */
+export function createSessionToken(): string {
+  const crypto = require("crypto");
+  return crypto.randomBytes(32).toString("hex");
+}
+
+/**
  * Convenience exports for database operations
  */
 export { query, queryOne, execute, withTransaction };

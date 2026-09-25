@@ -1,80 +1,59 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
-import crypto from 'crypto';
-
-// Hash password helper
-function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password).digest('hex');
-}
-
-// Verify password helper
-function verifyPassword(password: string, hash: string): boolean {
-  return hashPassword(password) === hash;
-}
+import {
+  queryOne,
+  successResponse,
+  errorResponse,
+  verifyPassword,
+  createSessionToken,
+  requirePlatformAdmin,
+} from '@/lib/route-helpers';
 
 export async function POST(request: NextRequest) {
   try {
     const { email, password } = await request.json();
 
     if (!email || !password) {
-      return NextResponse.json(
-        { error: 'Email and password are required' },
-        { status: 400 }
-      );
+      return errorResponse('Email and password are required', 400);
     }
 
-    const db = getDb();
-    const admin = db.prepare(
-      'SELECT * FROM tenant_admins WHERE email = ?'
-    ).get(email) as any;
+    // Try to get admin from database
+    const admin = await queryOne<any>(
+      'SELECT id, password_hash FROM tenant_admins WHERE email = ?',
+      [email]
+    );
 
-    if (!admin) {
-      // For first login, check against environment variable or hardcoded credential
-      const ENV_ADMIN_EMAIL = process.env.PLATFORM_ADMIN_EMAIL || 'admin@platform.local';
-      const ENV_ADMIN_PASSWORD = process.env.PLATFORM_ADMIN_PASSWORD || 'ChangeMe123!';
-
-      if (email === ENV_ADMIN_EMAIL && password === ENV_ADMIN_PASSWORD) {
-        // Create session token
-        const token = crypto.randomBytes(32).toString('hex');
-        const response = NextResponse.json({ success: true });
-        response.cookies.set('platform_admin_token', token, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
-          maxAge: 60 * 60 * 24, // 24 hours
-        });
-        return response;
-      }
-
-      return NextResponse.json(
-        { error: 'Invalid credentials' },
-        { status: 401 }
-      );
+    if (admin && verifyPassword(password, admin.password_hash)) {
+      // Valid credentials - create session
+      const token = createSessionToken();
+      const response = successResponse({ success: true });
+      response.cookies.set('platform_admin_token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24, // 24 hours
+      });
+      return response;
     }
 
-    // Verify password against stored hash
-    if (!verifyPassword(password, admin.password_hash)) {
-      return NextResponse.json(
-        { error: 'Invalid credentials' },
-        { status: 401 }
-      );
+    // Fall back to environment variable credentials (for first login / emergency)
+    const ENV_ADMIN_EMAIL = process.env.PLATFORM_ADMIN_EMAIL || 'admin@platform.local';
+    const ENV_ADMIN_PASSWORD = process.env.PLATFORM_ADMIN_PASSWORD || 'ChangeMe123!';
+
+    if (email === ENV_ADMIN_EMAIL && password === ENV_ADMIN_PASSWORD) {
+      const token = createSessionToken();
+      const response = successResponse({ success: true });
+      response.cookies.set('platform_admin_token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24,
+      });
+      return response;
     }
 
-    // Create session token
-    const token = crypto.randomBytes(32).toString('hex');
-    const response = NextResponse.json({ success: true });
-    response.cookies.set('platform_admin_token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24, // 24 hours
-    });
-    return response;
+    return errorResponse('Invalid credentials', 401);
   } catch (error) {
     console.error('Login error:', error);
-    return NextResponse.json(
-      { error: 'An error occurred' },
-      { status: 500 }
-    );
+    return errorResponse('An error occurred', 500);
   }
 }
