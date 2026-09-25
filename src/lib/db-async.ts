@@ -8,6 +8,14 @@ import { Pool, QueryResultRow } from "pg";
 let pgPool: Pool | null = null;
 
 /**
+ * Convert SQLite placeholders (?) to PostgreSQL ($1, $2, etc)
+ */
+function convertSqliteToPg(sql: string): string {
+  let paramIndex = 1;
+  return sql.replace(/\?/g, () => `$${paramIndex++}`);
+}
+
+/**
  * Initialize PostgreSQL connection pool
  */
 async function initPostgres(): Promise<Pool> {
@@ -44,7 +52,8 @@ export async function query<T extends QueryResultRow = any>(
   params?: any[]
 ): Promise<T[]> {
   const pool = await initPostgres();
-  const result = await pool.query(sql, params);
+  const pgSql = convertSqliteToPg(sql);
+  const result = await pool.query(pgSql, params);
   return result.rows as T[];
 }
 
@@ -67,7 +76,8 @@ export async function execute(
   params?: any[]
 ): Promise<{ changes: number; lastId?: string }> {
   const pool = await initPostgres();
-  const result = await pool.query(sql, params);
+  const pgSql = convertSqliteToPg(sql);
+  const result = await pool.query(pgSql, params);
   return { changes: result.rowCount || 0 };
 }
 
@@ -88,18 +98,21 @@ export async function withTransaction<T>(
         sql: string,
         params?: any[]
       ) => {
-        const result = await client.query(sql, params);
+        const pgSql = convertSqliteToPg(sql);
+        const result = await client.query(pgSql, params);
         return result.rows as U[];
       },
       queryOne: async <U extends QueryResultRow = any>(
         sql: string,
         params?: any[]
       ) => {
-        const result = await client.query(sql, params);
+        const pgSql = convertSqliteToPg(sql);
+        const result = await client.query(pgSql, params);
         return result.rows.length > 0 ? (result.rows[0] as U) : null;
       },
       execute: async (sql: string, params?: any[]) => {
-        const result = await client.query(sql, params);
+        const pgSql = convertSqliteToPg(sql);
+        const result = await client.query(pgSql, params);
         return { changes: result.rowCount || 0 };
       },
     };
