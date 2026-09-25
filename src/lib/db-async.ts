@@ -103,6 +103,8 @@ async function runMigrations(client: any): Promise<void> {
       category TEXT,
       example_url TEXT,
       sort_order INTEGER DEFAULT 0,
+      active INTEGER DEFAULT 1,
+      fit_options TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`,
 
@@ -256,6 +258,7 @@ async function runMigrations(client: any): Promise<void> {
       name TEXT NOT NULL,
       image_url TEXT,
       description TEXT,
+      active INTEGER DEFAULT 1,
       sort_order INTEGER DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
