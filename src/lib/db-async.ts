@@ -152,6 +152,7 @@ async function runMigrations(client: any): Promise<void> {
       quantity INTEGER NOT NULL,
       price_usd DECIMAL(10, 2) NOT NULL,
       price_crc DECIMAL(12, 2) NOT NULL,
+      tenant_id TEXT REFERENCES tenants(id),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`,
 
