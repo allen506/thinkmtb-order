@@ -100,6 +100,7 @@ async function runMigrations(client: any): Promise<void> {
     `CREATE TABLE IF NOT EXISTS pricing_tiers (
       id TEXT PRIMARY KEY,
       product_type_id TEXT NOT NULL REFERENCES product_types(id),
+      tenant_id TEXT REFERENCES tenants(id),
       min_qty INTEGER NOT NULL,
       max_qty INTEGER,
       price_usd DECIMAL(10, 2) NOT NULL,
