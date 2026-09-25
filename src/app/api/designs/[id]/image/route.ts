@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { queryOne, errorResponse } from "@/lib/route-helpers";
 import fs from "fs";
 import path from "path";
 
@@ -11,16 +11,13 @@ export async function GET(
     const { id: designId } = await params;
 
     // Get design from database to find image URL
-    const db = getDb();
-    const design = db
-      .prepare("SELECT image_url FROM designs WHERE id = ?")
-      .get(designId) as { image_url: string } | undefined;
+    const design = await queryOne<{ image_url: string }>(
+      "SELECT image_url FROM designs WHERE id = ?",
+      [designId]
+    );
 
     if (!design || !design.image_url) {
-      return NextResponse.json(
-        { error: "Design not found" },
-        { status: 404 }
-      );
+      return errorResponse("Design not found", 404);
     }
 
     // Construct file path
@@ -28,10 +25,7 @@ export async function GET(
 
     // Check if file exists
     if (!fs.existsSync(filepath)) {
-      return NextResponse.json(
-        { error: "Image file not found" },
-        { status: 404 }
-      );
+      return errorResponse("Image file not found", 404);
     }
 
     // Read file and determine MIME type
@@ -56,9 +50,6 @@ export async function GET(
     });
   } catch (error) {
     console.error("Error serving design image:", error);
-    return NextResponse.json(
-      { error: "Failed to serve image" },
-      { status: 500 }
-    );
+    return errorResponse("Failed to serve image", 500);
   }
 }

@@ -1,31 +1,32 @@
 import { NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { query } from "@/lib/route-helpers";
 import { getExchangeRate, crcToUsd } from "@/lib/exchange-rate";
 
 export async function GET() {
   try {
-    const db = getDb();
-    const designs = db
-      .prepare("SELECT * FROM designs WHERE active = 1 ORDER BY sort_order")
-      .all();
-    const productTypes = db
-      .prepare("SELECT id, name, description, category, example_url, fit_options, active, sort_order FROM product_types WHERE active = 1 ORDER BY sort_order")
-      .all();
-    const sizes = db
-      .prepare("SELECT * FROM sizes ORDER BY sort_order")
-      .all();
-    const pricingTiers = db
-      .prepare("SELECT * FROM pricing_tiers ORDER BY product_type_id, min_qty")
-      .all();
-    const productDesigns = db
-      .prepare("SELECT product_type_id, design_id FROM product_designs WHERE active = 1")
-      .all();
+    const [designs, productTypes, sizes, pricingTiers, productDesigns] =
+      await Promise.all([
+        query<any>("SELECT * FROM designs WHERE active = 1 ORDER BY sort_order", []),
+        query<any>(
+          "SELECT id, name, description, category, example_url, fit_options, active, sort_order FROM product_types WHERE active = 1 ORDER BY sort_order",
+          []
+        ),
+        query<any>("SELECT * FROM sizes ORDER BY sort_order", []),
+        query<any>(
+          "SELECT * FROM pricing_tiers ORDER BY product_type_id, min_qty",
+          []
+        ),
+        query<any>(
+          "SELECT product_type_id, design_id FROM product_designs WHERE active = 1",
+          []
+        ),
+      ]);
 
-    // Get current exchange rate and calculate USD in real-time for all tiers
+    // Get current exchange rate and calculate USD in real-time
     const exchangeRate = await getExchangeRate();
     const rate = exchangeRate.compra;
 
-    const pricingTiersWithLiveUSD = (pricingTiers as any[]).map((tier) => ({
+    const pricingTiersWithLiveUSD = pricingTiers.map((tier: any) => ({
       ...tier,
       price_usd: crcToUsd(tier.price_crc, rate),
     }));

@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { NextRequest } from "next/server";
+import { queryOne, execute, errorResponse, successResponse } from "@/lib/route-helpers";
 
 // PATCH - update an order item's fields
 export async function PATCH(
@@ -9,18 +9,18 @@ export async function PATCH(
   try {
     const { itemId } = await params;
     const body = await request.json();
-    const db = getDb();
 
-    const item = db
-      .prepare("SELECT * FROM order_items WHERE id = ?")
-      .get(itemId);
+    const item = await queryOne<any>(
+      "SELECT * FROM order_items WHERE id = ?",
+      [itemId]
+    );
 
     if (!item) {
-      return NextResponse.json({ error: "Item not found" }, { status: 404 });
+      return errorResponse("Item not found", 404);
     }
 
     const updates: string[] = [];
-    const values: (string | number)[] = [];
+    const values: any[] = [];
 
     if (body.productTypeId) {
       updates.push("product_type_id = ?");
@@ -48,21 +48,17 @@ export async function PATCH(
     }
 
     if (updates.length === 0) {
-      return NextResponse.json({ error: "No fields to update" }, { status: 400 });
+      return errorResponse("No fields to update", 400);
     }
 
-    values.push(Number(itemId));
-    db.prepare(`UPDATE order_items SET ${updates.join(", ")} WHERE id = ?`).run(
-      ...values
-    );
+    updates.push("updated_at = NOW()");
+    values.push(itemId);
 
-    return NextResponse.json({ message: "Item updated" });
+    await execute(`UPDATE order_items SET ${updates.join(", ")} WHERE id = ?`, values);
+    return successResponse({ message: "Item updated" });
   } catch (error) {
     console.error("Error updating order item:", error);
-    return NextResponse.json(
-      { error: "Failed to update item" },
-      { status: 500 }
-    );
+    return errorResponse("Failed to update item", 500);
   }
 }
 
@@ -74,45 +70,59 @@ export async function DELETE(
 ) {
   try {
     const { itemId } = await params;
-    const db = getDb();
 
     // Find the item and its parent order
-    const item = db
-      .prepare("SELECT * FROM order_items WHERE id = ?")
-      .get(itemId) as { id: number; order_id: string } | undefined;
+    const item = await queryOne<{ id: string; order_id: string }>(
+      "SELECT id, order_id FROM order_items WHERE id = ?",
+      [itemId]
+    );
 
     if (!item) {
-      return NextResponse.json({ error: "Item not found" }, { status: 404 });
+      return errorResponse("Item not found", 404);
     }
 
     const orderId = item.order_id;
 
     // Delete the item
-    db.prepare("DELETE FROM order_items WHERE id = ?").run(itemId);
+    await execute("DELETE FROM order_items WHERE id = ?", [itemId]);
 
     // Check if there are remaining items in the order
-    const remaining = db
-      .prepare("SELECT COUNT(*) as count FROM order_items WHERE order_id = ?")
-      .get(orderId) as { count: number };
+    const remaining = await queryOne<{ count: number }>(
+      "SELECT COUNT(*) as count FROM order_items WHERE order_id = ?",
+      [orderId]
+    );
 
     // If no items left, delete the order too
-    if (remaining.count === 0) {
-      db.prepare("DELETE FROM orders WHERE id = ?").run(orderId);
-      return NextResponse.json({
-        message: "Item deleted. Order removed (no items remaining).",
-        orderDeleted: true,
-      });
+    if (!remaining || remaining.count === 0) {
+      await execute("DELETE FROM orders WHERE id = ?", [orderId]);
     }
 
-    return NextResponse.json({
-      message: "Item deleted",
-      orderDeleted: false,
-    });
+    return successResponse({ message: "Item deleted" });
   } catch (error) {
     console.error("Error deleting order item:", error);
-    return NextResponse.json(
-      { error: "Failed to delete item" },
-      { status: 500 }
+    return errorResponse("Failed to delete item", 500);
+  }
+}
+
+// GET a single order item
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ itemId: string }> }
+) {
+  try {
+    const { itemId } = await params;
+    const item = await queryOne<any>(
+      "SELECT * FROM order_items WHERE id = ?",
+      [itemId]
     );
+
+    if (!item) {
+      return errorResponse("Item not found", 404);
+    }
+
+    return successResponse({ item });
+  } catch (error) {
+    console.error("Error fetching order item:", error);
+    return errorResponse("Failed to fetch item", 500);
   }
 }

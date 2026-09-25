@@ -1,25 +1,26 @@
 import { NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { query } from "@/lib/route-helpers";
 import { getUnitPriceCRC } from "@/lib/pricing";
 import { getExchangeRate, crcToUsd } from "@/lib/exchange-rate";
 
 export async function GET() {
   try {
-    const db = getDb();
-
     // Get live exchange rate
     const { compra: exchangeRate } = await getExchangeRate();
 
     // Get total quantities per product type (for tier pricing)
-    const productTotals = db
-      .prepare(
-        `SELECT product_type_id, SUM(quantity) as total_qty
-         FROM order_items
-         GROUP BY product_type_id`
-      )
-      .all() as { product_type_id: string; total_qty: number }[];
+    const productTotals = await query<{
+      product_type_id: string;
+      total_qty: number;
+    }>(
+      `SELECT product_type_id, SUM(quantity) as total_qty
+       FROM order_items
+       GROUP BY product_type_id`,
+      []
+    );
 
-    const tierPrices: Record<string, { priceCRC: number; priceUSD: number }> = {};
+    const tierPrices: Record<string, { priceCRC: number; priceUSD: number }> =
+      {};
     for (const pt of productTotals) {
       const priceCRC = getUnitPriceCRC(pt.product_type_id, pt.total_qty);
       if (priceCRC !== null) {
@@ -30,15 +31,18 @@ export async function GET() {
       }
     }
 
-    // Get all orders grouped by user with their items
-    const orders = db
-      .prepare(
-        `SELECT o.id, o.user_name, o.created_at
-         FROM orders o
-         WHERE o.status != 'cancelled'
-         ORDER BY o.user_name COLLATE NOCASE, o.created_at`
-      )
-      .all() as { id: string; user_name: string; created_at: string }[];
+    // Get all non-cancelled orders grouped by user
+    const orders = await query<{
+      id: string;
+      user_name: string;
+      created_at: string;
+    }>(
+      `SELECT o.id, o.user_name, o.created_at
+       FROM orders o
+       WHERE o.status != ?
+       ORDER BY o.user_name, o.created_at`,
+      ["cancelled"]
+    );
 
     // Group orders by user name (case-insensitive)
     const userMap = new Map<
@@ -59,26 +63,23 @@ export async function GET() {
     >();
 
     for (const order of orders) {
-      const items = db
-        .prepare(
-          `SELECT oi.product_type_id, oi.quantity, COALESCE(oi.fit, '') as fit,
-            pt.name as product_name,
-            d.name as design_name,
-            s.name as size_name
-           FROM order_items oi
-           JOIN product_types pt ON oi.product_type_id = pt.id
-           JOIN designs d ON oi.design_id = d.id
-           JOIN sizes s ON oi.size_id = s.id
-           WHERE oi.order_id = ?`
-        )
-        .all(order.id) as {
+      const items = await query<{
         product_type_id: string;
         quantity: number;
         fit: string;
         product_name: string;
         design_name: string;
         size_name: string;
-      }[];
+      }>(
+        `SELECT oi.product_type_id, oi.quantity, COALESCE(oi.fit, '') as fit,
+          pt.name as product_name, d.name as design_name, s.name as size_name
+         FROM order_items oi
+         JOIN product_types pt ON oi.product_type_id = pt.id
+         JOIN designs d ON oi.design_id = d.id
+         JOIN sizes s ON oi.size_id = s.id
+         WHERE oi.order_id = ?`,
+        [order.id]
+      );
 
       const userKey = order.user_name.toLowerCase().trim();
       if (!userMap.has(userKey)) {

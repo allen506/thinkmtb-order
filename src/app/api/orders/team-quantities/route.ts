@@ -1,21 +1,18 @@
 import { NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { query } from "@/lib/route-helpers";
 
-// Returns total quantities per product type across all team orders
+// Returns total quantities per product type across all non-cancelled team orders
 // Used to determine current pricing tier
 export async function GET() {
   try {
-    const db = getDb();
-
-    const totals = db
-      .prepare(
-        `SELECT product_type_id, COALESCE(SUM(quantity), 0) as total_qty
-         FROM order_items oi
-         JOIN orders o ON oi.order_id = o.id
-         WHERE o.status != 'cancelled'
-         GROUP BY product_type_id`
-      )
-      .all() as { product_type_id: string; total_qty: number }[];
+    const totals = await query<{ product_type_id: string; total_qty: number }>(
+      `SELECT product_type_id, COALESCE(SUM(quantity), 0) as total_qty
+       FROM order_items oi
+       JOIN orders o ON oi.order_id = o.id
+       WHERE o.status != ?
+       GROUP BY product_type_id`,
+      ["cancelled"]
+    );
 
     const result: Record<string, number> = {};
     for (const row of totals) {
