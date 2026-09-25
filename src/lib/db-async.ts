@@ -92,6 +92,7 @@ async function runMigrations(client: any): Promise<void> {
       name TEXT NOT NULL,
       description TEXT,
       category TEXT,
+      example_url TEXT,
       sort_order INTEGER DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`,
