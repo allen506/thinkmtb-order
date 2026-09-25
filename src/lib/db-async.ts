@@ -113,8 +113,10 @@ async function runMigrations(client: any): Promise<void> {
       product_type_id TEXT NOT NULL REFERENCES product_types(id),
       price_usd DECIMAL(10, 2),
       price_crc DECIMAL(12, 2),
+      expires_at TIMESTAMP,
       active_from TIMESTAMP,
       active_until TIMESTAMP,
+      tenant_id TEXT REFERENCES tenants(id),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`,
 
