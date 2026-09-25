@@ -186,6 +186,19 @@ async function runMigrations(client: any): Promise<void> {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`,
+
+    // User management
+    `CREATE TABLE IF NOT EXISTS user_accounts (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL REFERENCES tenants(id),
+      email TEXT NOT NULL,
+      password_hash TEXT,
+      team_id TEXT,
+      is_team_captain INTEGER DEFAULT 0,
+      role TEXT DEFAULT 'user',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
   ];
 
   for (const migration of migrations) {
