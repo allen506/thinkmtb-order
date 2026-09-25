@@ -269,6 +269,7 @@ async function runMigrations(client: any): Promise<void> {
       id TEXT PRIMARY KEY,
       product_type_id TEXT NOT NULL REFERENCES product_types(id),
       design_id TEXT NOT NULL REFERENCES designs(id),
+      active INTEGER DEFAULT 1,
       sort_order INTEGER DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`,
