@@ -31,6 +31,15 @@ async function runMigrations(client: any): Promise<void> {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`,
 
+    // Teams
+    `CREATE TABLE IF NOT EXISTS teams (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL REFERENCES tenants(id),
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
+
     // Design workflow tables
     `CREATE TABLE IF NOT EXISTS design_requests (
       id TEXT PRIMARY KEY,
