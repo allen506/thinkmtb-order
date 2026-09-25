@@ -379,6 +379,9 @@ export async function query<T extends QueryResultRow = any>(
 ): Promise<T[]> {
   const pool = await initPostgres();
   const pgSql = convertSqliteToPg(sql);
+  console.log("🔍 DB Query - Original SQL:", sql);
+  console.log("🔍 DB Query - Converted SQL:", pgSql);
+  console.log("🔍 DB Query - Params:", params);
   const result = await pool.query(pgSql, params);
   return result.rows as T[];
 }
