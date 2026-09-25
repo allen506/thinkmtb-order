@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { query, execute, errorResponse, successResponse } from "@/lib/route-helpers";
 import path from "path";
 import fs from "fs";
+import { v4 as uuidv4 } from "uuid";
 
 const UPLOAD_DIR = path.join(process.cwd(), "public", "final-designs");
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -13,17 +14,15 @@ function sanitizeFilename(name: string): string {
 
 export async function GET() {
   try {
-    const db = getDb();
-    const rows = db
-      .prepare(
-        `SELECT id, name, description, image_url, sort_order, created_at
-         FROM final_designs ORDER BY sort_order ASC, created_at ASC`
-      )
-      .all();
+    const rows = await query<any>(
+      `SELECT id, name, description, image_url, sort_order, created_at
+       FROM final_designs ORDER BY sort_order ASC, created_at ASC`,
+      []
+    );
     return NextResponse.json(rows);
   } catch (err) {
     console.error("GET /api/final-designs error:", err);
-    return NextResponse.json({ error: "Failed to load designs" }, { status: 500 });
+    return errorResponse("Failed to load designs", 500);
   }
 }
 
@@ -35,13 +34,13 @@ export async function POST(req: NextRequest) {
     const description = (formData.get("description") as string | null)?.trim() ?? "";
 
     if (!file || !name) {
-      return NextResponse.json({ error: "name and file are required" }, { status: 400 });
+      return errorResponse("name and file are required", 400);
     }
     if (!ALLOWED_MIME.has(file.type)) {
-      return NextResponse.json({ error: "Only JPEG, PNG, WebP, or GIF images are allowed" }, { status: 400 });
+      return errorResponse("Only JPEG, PNG, WebP, or GIF images are allowed", 400);
     }
     if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ error: "File must be under 10 MB" }, { status: 400 });
+      return errorResponse("File must be under 10 MB", 400);
     }
 
     // Ensure upload dir exists
@@ -57,25 +56,22 @@ export async function POST(req: NextRequest) {
     fs.writeFileSync(filePath, buffer);
 
     const imageUrl = `/final-designs/${safeName}`;
+    const designId = uuidv4();
 
-    const db = getDb();
-    const maxOrder = (
-      db.prepare("SELECT MAX(sort_order) as m FROM final_designs").get() as { m: number | null }
-    ).m ?? 0;
+    await execute(
+      `INSERT INTO final_designs (id, name, description, image_url, sort_order, created_at)
+       VALUES (?, ?, ?, ?, (COALESCE((SELECT MAX(sort_order) FROM final_designs), 0) + 1), NOW())`,
+      [designId, name, description, imageUrl]
+    );
 
-    const result = db
-      .prepare(
-        `INSERT INTO final_designs (name, description, image_url, sort_order) VALUES (?, ?, ?, ?)`
-      )
-      .run(name, description, imageUrl, maxOrder + 1);
+    const inserted = await query<any>(
+      "SELECT * FROM final_designs WHERE id = ?",
+      [designId]
+    );
 
-    const inserted = db
-      .prepare("SELECT * FROM final_designs WHERE id = ?")
-      .get(result.lastInsertRowid);
-
-    return NextResponse.json(inserted, { status: 201 });
+    return NextResponse.json(inserted[0], { status: 201 });
   } catch (err) {
     console.error("POST /api/final-designs error:", err);
-    return NextResponse.json({ error: "Upload failed" }, { status: 500 });
+    return errorResponse("Upload failed", 500);
   }
 }

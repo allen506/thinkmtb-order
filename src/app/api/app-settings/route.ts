@@ -1,17 +1,22 @@
-import { getDb } from "@/lib/db";
-import { NextRequest, NextResponse } from "next/server";
-import { isAdminAuthenticated, unauthorized } from "@/lib/admin-auth";
+import { NextRequest } from "next/server";
+import {
+  query,
+  execute,
+  errorResponse,
+  successResponse,
+  requireAdminSession,
+} from "@/lib/route-helpers";
 
 export async function GET(request: NextRequest) {
-  if (!isAdminAuthenticated(request)) return unauthorized();
-  
+  const authError = await requireAdminSession(request);
+  if (authError) return errorResponse(authError.error, 401);
+
   try {
-    const db = getDb();
-    
-    const settings = db
-      .prepare(`SELECT key, value FROM app_settings`)
-      .all() as { key: string; value: string }[];
-    
+    const settings = await query<{ key: string; value: string }>(
+      `SELECT key, value FROM app_settings`,
+      []
+    );
+
     const result: Record<string, any> = {};
     settings.forEach(({ key, value }) => {
       // Try to parse as number if it looks like one
@@ -23,31 +28,32 @@ export async function GET(request: NextRequest) {
         result[key] = value;
       }
     });
-    
-    return NextResponse.json(result, { status: 200 });
+
+    return successResponse(result);
   } catch (error) {
     console.error("Failed to fetch app settings:", error);
-    return NextResponse.json({ error: "Failed to fetch settings" }, { status: 500 });
+    return errorResponse("Failed to fetch settings", 500);
   }
 }
 
 export async function PATCH(request: NextRequest) {
-  if (!isAdminAuthenticated(request)) return unauthorized();
-  
+  const authError = await requireAdminSession(request);
+  if (authError) return errorResponse(authError.error, 401);
+
   try {
     const body = await request.json();
-    const db = getDb();
-    
+
     for (const [key, value] of Object.entries(body)) {
-      db.prepare(
-        `INSERT INTO app_settings (key, value) VALUES (?, ?) 
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value`
-      ).run(key, String(value));
+      await execute(
+        `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, NOW())
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = NOW()`,
+        [key, String(value)]
+      );
     }
-    
-    return NextResponse.json({ success: true }, { status: 200 });
+
+    return successResponse({ success: true });
   } catch (error) {
     console.error("Failed to update app settings:", error);
-    return NextResponse.json({ error: "Failed to update settings" }, { status: 500 });
+    return errorResponse("Failed to update settings", 500);
   }
 }

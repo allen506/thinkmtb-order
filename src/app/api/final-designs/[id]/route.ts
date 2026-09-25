@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { queryOne, execute, errorResponse, successResponse } from "@/lib/route-helpers";
 import path from "path";
 import fs from "fs";
 
@@ -16,24 +16,30 @@ export async function PATCH(
     const description = (body.description ?? "").toString().trim();
 
     if (!name) {
-      return NextResponse.json({ error: "name is required" }, { status: 400 });
+      return errorResponse("name is required", 400);
     }
 
-    const db = getDb();
-    const existing = db.prepare("SELECT id FROM final_designs WHERE id = ?").get(id);
+    const existing = await queryOne<{ id: string }>(
+      "SELECT id FROM final_designs WHERE id = ?",
+      [id]
+    );
     if (!existing) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return errorResponse("Not found", 404);
     }
 
-    db.prepare(
-      "UPDATE final_designs SET name = ?, description = ? WHERE id = ?"
-    ).run(name, description, id);
+    await execute(
+      "UPDATE final_designs SET name = ?, description = ?, updated_at = NOW() WHERE id = ?",
+      [name, description, id]
+    );
 
-    const updated = db.prepare("SELECT * FROM final_designs WHERE id = ?").get(id);
+    const updated = await queryOne<any>(
+      "SELECT * FROM final_designs WHERE id = ?",
+      [id]
+    );
     return NextResponse.json(updated);
   } catch (err) {
     console.error("PATCH /api/final-designs/[id] error:", err);
-    return NextResponse.json({ error: "Update failed" }, { status: 500 });
+    return errorResponse("Update failed", 500);
   }
 }
 
@@ -43,16 +49,16 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const db = getDb();
-    const row = db
-      .prepare("SELECT image_url FROM final_designs WHERE id = ?")
-      .get(id) as { image_url: string } | undefined;
+    const row = await queryOne<{ image_url: string }>(
+      "SELECT image_url FROM final_designs WHERE id = ?",
+      [id]
+    );
 
     if (!row) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return errorResponse("Not found", 404);
     }
 
-    db.prepare("DELETE FROM final_designs WHERE id = ?").run(id);
+    await execute("DELETE FROM final_designs WHERE id = ?", [id]);
 
     // Remove file from disk (only files inside our upload directory)
     const filename = path.basename(row.image_url);
@@ -64,6 +70,6 @@ export async function DELETE(
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("DELETE /api/final-designs/[id] error:", err);
-    return NextResponse.json({ error: "Delete failed" }, { status: 500 });
+    return errorResponse("Delete failed", 500);
   }
 }
