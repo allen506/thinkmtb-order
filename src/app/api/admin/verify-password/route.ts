@@ -21,8 +21,18 @@ export async function POST(request: NextRequest) {
     // For now, check against hardcoded env var (TODO: use tenant_admins table)
     const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
     const hashedAdminPassword = hashPassword(adminPassword);
+    const inputHash = hashPassword(password);
+    
+    console.log("Admin password verification:", {
+      inputPassword: password,
+      adminPassword: adminPassword,
+      hashedAdminPassword: hashedAdminPassword,
+      inputHash: inputHash,
+      match: inputHash === hashedAdminPassword
+    });
     
     if (!verifyPassword(password, hashedAdminPassword)) {
+      console.warn("Password mismatch - invalid password");
       return errorResponse("Invalid password", 401);
     }
 
