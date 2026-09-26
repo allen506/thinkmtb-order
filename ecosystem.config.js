@@ -16,7 +16,7 @@ module.exports = {
         NODE_ENV: "production",
         PORT: 3000,
         FORCE_DB_INIT: "true",
-        DATABASE_URL: "postgresql://thinkmtb:postgres123@localhost:5432/thinkmtb_order",
+        DATABASE_URL: "postgresql://thinkmtb:ThinkMTB@2026!Secure@localhost:5432/thinkmtb_order",
         DB_TYPE: "postgresql",
       },
     },
