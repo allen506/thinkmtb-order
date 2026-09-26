@@ -156,8 +156,9 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error fetching admin summary:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: "Failed to fetch admin summary" },
+      { error: "Failed to fetch admin summary", details: errorMessage },
       { status: 500 }
     );
   }
