@@ -6,6 +6,7 @@ import {
   successResponse,
   verifyPassword,
   createSessionToken,
+  hashPassword,
 } from "@/lib/route-helpers";
 import { v4 as uuidv4 } from "uuid";
 
@@ -19,8 +20,9 @@ export async function POST(request: NextRequest) {
 
     // For now, check against hardcoded env var (TODO: use tenant_admins table)
     const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
+    const hashedAdminPassword = hashPassword(adminPassword);
     
-    if (!verifyPassword(password, adminPassword)) {
+    if (!verifyPassword(password, hashedAdminPassword)) {
       return errorResponse("Invalid password", 401);
     }
 

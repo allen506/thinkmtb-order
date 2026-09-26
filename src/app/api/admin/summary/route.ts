@@ -5,7 +5,7 @@ import { getExchangeRate, crcToUsd } from "@/lib/exchange-rate";
 import { isAdminAuthenticated, unauthorized } from '@/lib/admin-auth';
 
 export async function GET(request: NextRequest) {
-  if (!isAdminAuthenticated(request)) {
+  if (!(await isAdminAuthenticated(request))) {
     console.warn("Unauthorized admin summary request");
     return unauthorized();
   }

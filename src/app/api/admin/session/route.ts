@@ -10,7 +10,7 @@ export async function DELETE(request: NextRequest) {
     const token = request.cookies.get("admin-session")?.value;
     
     if (token) {
-      await execute("DELETE FROM admin_sessions WHERE token = ?", [token]);
+      await execute("DELETE FROM admin_sessions WHERE token = $1", [token]);
     }
     
     const response = successResponse({ message: "Logged out" });
