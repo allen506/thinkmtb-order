@@ -18,33 +18,32 @@ export async function POST(request: NextRequest) {
       return errorResponse("Password is required", 400);
     }
 
+    console.log("Received password verification request");
+
     // For now, check against hardcoded env var (TODO: use tenant_admins table)
     const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
     const hashedAdminPassword = hashPassword(adminPassword);
-    const inputHash = hashPassword(password);
-    
-    console.log("Admin password verification:", {
-      inputPassword: password,
-      adminPassword: adminPassword,
-      hashedAdminPassword: hashedAdminPassword,
-      inputHash: inputHash,
-      match: inputHash === hashedAdminPassword
-    });
     
     if (!verifyPassword(password, hashedAdminPassword)) {
       console.warn("Password mismatch - invalid password");
       return errorResponse("Invalid password", 401);
     }
 
+    console.log("Password verified, creating session token");
+
     // Create admin session token
     const sessionId = uuidv4();
     const token = createSessionToken();
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
 
+    console.log("Inserting session into database", { sessionId, token, expiresAt });
+
     await execute(
       `INSERT INTO admin_sessions (id, token, expires_at) VALUES ($1, $2, $3)`,
       [sessionId, token, expiresAt.toISOString()]
     );
+
+    console.log("Session created successfully");
 
     // Set secure httpOnly cookie for the session
     const response = NextResponse.json({ valid: true });
