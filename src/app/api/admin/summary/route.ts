@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
         SUM(oi.quantity) as total_qty
        FROM order_items oi
        JOIN product_types pt ON oi.product_type_id = pt.id
-       GROUP BY oi.product_type_id
+       GROUP BY oi.product_type_id, pt.name, pt.sort_order
        ORDER BY pt.sort_order`
     );
 
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
         SUM(oi.quantity) as total_qty
        FROM order_items oi
        JOIN designs d ON oi.design_id = d.id
-       GROUP BY oi.design_id
+       GROUP BY oi.design_id, d.name, d.sort_order
        ORDER BY d.sort_order`
     );
 
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
         SUM(oi.quantity) as total_qty
        FROM order_items oi
        JOIN sizes s ON oi.size_id = s.id
-       GROUP BY oi.size_id
+       GROUP BY oi.size_id, s.name, s.sort_order
        ORDER BY s.sort_order`
     );
 
@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
        JOIN product_types pt ON oi.product_type_id = pt.id
        JOIN designs d ON oi.design_id = d.id
        JOIN sizes s ON oi.size_id = s.id
-       GROUP BY oi.product_type_id, oi.design_id, oi.size_id, oi.fit
+       GROUP BY oi.product_type_id, pt.name, oi.design_id, d.name, oi.size_id, s.name, COALESCE(oi.fit, ''), pt.sort_order, d.sort_order, s.sort_order
        ORDER BY pt.sort_order, d.sort_order, s.sort_order`
     );
 
