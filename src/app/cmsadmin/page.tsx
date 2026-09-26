@@ -279,15 +279,7 @@ export default function AdminPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="p-8 text-center">
-        <p className="text-gray-600">Loading admin dashboard...</p>
-      </div>
-    );
-  }
-
-  return (
+  const dashboardContent = (
     <div className="p-4 sm:p-6 lg:p-8 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
@@ -326,6 +318,12 @@ export default function AdminPage() {
         </div>
 
         {/* Content */}
+        {activeTab === "overview" && loading && (
+          <div className="p-8 text-center">
+            <p className="text-gray-600">Loading admin dashboard...</p>
+          </div>
+        )}
+
         {activeTab === "overview" && data && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -382,5 +380,17 @@ export default function AdminPage() {
         )}
       </div>
     </div>
+  );
+
+  return (
+    <PasswordGate
+      password=""
+      storageKey="auth-admin"
+      verifyEndpoint="/api/admin/verify-password"
+      title="Admin Login"
+      checkOrderingStatus={false}
+    >
+      {dashboardContent}
+    </PasswordGate>
   );
 }
