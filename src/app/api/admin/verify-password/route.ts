@@ -37,12 +37,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Create admin session token
+    const sessionId = uuidv4();
     const token = createSessionToken();
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
 
     await execute(
-      `INSERT INTO admin_sessions (token, expires_at) VALUES ($1, $2)`,
-      [token, expiresAt.toISOString()]
+      `INSERT INTO admin_sessions (id, token, expires_at) VALUES ($1, $2, $3)`,
+      [sessionId, token, expiresAt.toISOString()]
     );
 
     // Set secure httpOnly cookie for the session
