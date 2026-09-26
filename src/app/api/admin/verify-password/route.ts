@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (error) {
     console.error("Error verifying admin password:", error);
+    console.error("Full error object:", JSON.stringify(error, null, 2));
     if (error instanceof Error) {
       console.error("Error message:", error.message);
       console.error("Error stack:", error.stack);
