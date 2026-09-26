@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import {
   queryOne,
   execute,
@@ -29,12 +29,21 @@ export async function POST(request: NextRequest) {
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
 
     await execute(
-      `INSERT INTO admin_sessions (token, expires_at) VALUES (?, ?)`,
+      `INSERT INTO admin_sessions (token, expires_at) VALUES ($1, $2)`,
       [token, expiresAt.toISOString()]
     );
 
-    const response = successResponse({ valid: true });
-    // Note: Response cookie setting handled by client preference
+    // Set secure httpOnly cookie for the session
+    const response = NextResponse.json({ valid: true });
+    response.cookies.set({
+      name: "admin-session",
+      value: token,
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+      maxAge: 24 * 60 * 60, // 24 hours
+      path: "/"
+    });
     return response;
   } catch (error) {
     console.error("Error verifying admin password:", error);
